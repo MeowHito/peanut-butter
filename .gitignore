@@ -7,7 +7,6 @@ dist/
 build/
 
 # Environment
-.env
 .env.local
 .env.*.local
 
@@ -32,3 +31,7 @@ yarn-error.log*
 # Misc
 .vercel
 coverage/
+
+# Uploads
+uploads/
+
