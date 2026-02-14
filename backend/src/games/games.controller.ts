@@ -2,25 +2,44 @@ import {
     Controller,
     Post,
     Get,
+    Patch,
     Delete,
     Param,
     Body,
     UseGuards,
     UseInterceptors,
     UploadedFile,
+    UploadedFiles,
     Request,
     Res,
     Query,
     ParseIntPipe,
     DefaultValuePipe,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { Response } from 'express';
 import * as path from 'path';
+import * as fs from 'fs';
 import { GamesService } from './games.service';
 import { UploadGameDto } from './dto/upload-game.dto';
+import { UpdateGameDto } from './dto/update-game.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+const tempUploadDir = path.join(process.cwd(), 'uploads', 'temp');
+
+const multerStorage = diskStorage({
+    destination: (req, file, cb) => {
+        if (!fs.existsSync(tempUploadDir)) {
+            fs.mkdirSync(tempUploadDir, { recursive: true });
+        }
+        cb(null, tempUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+});
 
 @Controller('games')
 export class GamesController {
@@ -29,47 +48,46 @@ export class GamesController {
     @Post('upload')
     @UseGuards(JwtAuthGuard)
     @UseInterceptors(
-        FileInterceptor('gameFile', {
-            storage: diskStorage({
-                destination: (req, file, cb) => {
-                    const uploadDir = path.join(process.cwd(), 'uploads', 'temp');
-                    const fs = require('fs');
-                    if (!fs.existsSync(uploadDir)) {
-                        fs.mkdirSync(uploadDir, { recursive: true });
-                    }
-                    cb(null, uploadDir);
+        FileFieldsInterceptor(
+            [
+                { name: 'gameFile', maxCount: 1 },
+                { name: 'thumbnail', maxCount: 1 },
+            ],
+            {
+                storage: multerStorage,
+                limits: {
+                    fileSize: 50 * 1024 * 1024, // 50MB
                 },
-                filename: (req, file, cb) => {
-                    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-                    cb(null, uniqueSuffix + path.extname(file.originalname));
-                },
-            }),
-            limits: {
-                fileSize: 50 * 1024 * 1024, // 50MB
             },
-            fileFilter: (req, file, cb) => {
-                const ext = path.extname(file.originalname).toLowerCase();
-                if (ext !== '.html' && ext !== '.zip') {
-                    return cb(new Error('Only .html and .zip files are allowed'), false);
-                }
-                cb(null, true);
-            },
-        }),
+        ),
     )
     async uploadGame(
-        @UploadedFile() file: Express.Multer.File,
+        @UploadedFiles() files: { gameFile?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
         @Body() uploadGameDto: UploadGameDto,
         @Request() req,
     ) {
-        return this.gamesService.uploadGame(file, uploadGameDto, req.user._id);
+        const gameFile = files.gameFile?.[0];
+        const thumbnailFile = files.thumbnail?.[0];
+        return this.gamesService.uploadGame(gameFile!, uploadGameDto, req.user._id, thumbnailFile);
     }
 
+    // Public listing — only visible games
     @Get()
     async findAll(
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
         @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     ) {
         return this.gamesService.findAll(page, limit);
+    }
+
+    // Admin listing — all games
+    @Get('admin/all')
+    @UseGuards(JwtAuthGuard)
+    async findAllAdmin(
+        @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+        @Query('limit', new DefaultValuePipe(100), ParseIntPipe) limit: number,
+    ) {
+        return this.gamesService.findAllAdmin(page, limit);
     }
 
     @Get(':id')
@@ -81,6 +99,32 @@ export class GamesController {
     async playGame(@Param('id') id: string, @Res() res: Response) {
         const filePath = await this.gamesService.getGamePlayPath(id);
         return res.sendFile(filePath);
+    }
+
+    // Update game details (admin)
+    @Patch(':id')
+    @UseGuards(JwtAuthGuard)
+    @UseInterceptors(
+        FileInterceptor('thumbnail', {
+            storage: multerStorage,
+            limits: {
+                fileSize: 5 * 1024 * 1024, // 5MB for thumbnail
+            },
+        }),
+    )
+    async updateGame(
+        @Param('id') id: string,
+        @UploadedFile() thumbnailFile: Express.Multer.File,
+        @Body() updateGameDto: UpdateGameDto,
+    ) {
+        return this.gamesService.updateGame(id, updateGameDto, thumbnailFile);
+    }
+
+    // Toggle visibility (admin)
+    @Patch(':id/visibility')
+    @UseGuards(JwtAuthGuard)
+    async toggleVisibility(@Param('id') id: string) {
+        return this.gamesService.toggleVisibility(id);
     }
 
     @Delete(':id')

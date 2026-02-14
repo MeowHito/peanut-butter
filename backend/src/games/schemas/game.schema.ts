@@ -31,6 +31,9 @@ export class Game {
 
     @Prop({ default: '' })
     thumbnailUrl: string;
+
+    @Prop({ default: false })
+    isVisible: boolean;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

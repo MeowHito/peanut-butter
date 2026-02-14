@@ -11,18 +11,23 @@ import * as path from 'path';
 import * as AdmZip from 'adm-zip';
 import { Game, GameDocument } from './schemas/game.schema';
 import { UploadGameDto } from './dto/upload-game.dto';
+import { UpdateGameDto } from './dto/update-game.dto';
 
 @Injectable()
 export class GamesService {
     private readonly uploadsDir = path.join(process.cwd(), 'uploads', 'games');
+    private readonly thumbnailsDir = path.join(process.cwd(), 'uploads', 'thumbnails');
     private readonly maxFileSize = 50 * 1024 * 1024; // 50MB
 
     constructor(
         @InjectModel(Game.name) private gameModel: Model<GameDocument>,
     ) {
-        // Ensure uploads directory exists
+        // Ensure uploads directories exist
         if (!fs.existsSync(this.uploadsDir)) {
             fs.mkdirSync(this.uploadsDir, { recursive: true });
+        }
+        if (!fs.existsSync(this.thumbnailsDir)) {
+            fs.mkdirSync(this.thumbnailsDir, { recursive: true });
         }
     }
 
@@ -30,6 +35,7 @@ export class GamesService {
         file: Express.Multer.File,
         uploadGameDto: UploadGameDto,
         userId: string,
+        thumbnailFile?: Express.Multer.File,
     ) {
         // Validate file exists
         if (!file) {
@@ -109,6 +115,17 @@ export class GamesService {
             throw new BadRequestException('Failed to process uploaded file');
         }
 
+        // Handle thumbnail
+        let thumbnailUrl = '';
+        if (thumbnailFile) {
+            const thumbExt = path.extname(thumbnailFile.originalname).toLowerCase();
+            const thumbFilename = `${slug}${thumbExt}`;
+            const thumbDest = path.join(this.thumbnailsDir, thumbFilename);
+            fs.copyFileSync(thumbnailFile.path, thumbDest);
+            fs.unlinkSync(thumbnailFile.path);
+            thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
+        }
+
         // Create game record in database
         const game = await this.gameModel.create({
             title: uploadGameDto.title,
@@ -119,6 +136,8 @@ export class GamesService {
             entryFile,
             fileType,
             fileSize: file.size,
+            thumbnailUrl,
+            isVisible: false, // Needs admin approval
         });
 
         return {
@@ -130,13 +149,42 @@ export class GamesService {
                 slug: game.slug,
                 fileType: game.fileType,
                 fileSize: game.fileSize,
+                thumbnailUrl: game.thumbnailUrl,
+                isVisible: game.isVisible,
                 playUrl: `/games/${game._id}/play`,
                 createdAt: (game as any).createdAt,
             },
         };
     }
 
+    // Public listing — only visible games
     async findAll(page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+
+        const [games, total] = await Promise.all([
+            this.gameModel
+                .find({ isVisible: true })
+                .populate('uploadedBy', 'username')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select('-filePath -entryFile'),
+            this.gameModel.countDocuments({ isVisible: true }),
+        ]);
+
+        return {
+            games,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        };
+    }
+
+    // Admin listing — all games regardless of visibility
+    async findAllAdmin(page = 1, limit = 100) {
         const skip = (page - 1) * limit;
 
         const [games, total] = await Promise.all([
@@ -179,6 +227,7 @@ export class GamesService {
             fileType: game.fileType,
             fileSize: game.fileSize,
             thumbnailUrl: game.thumbnailUrl,
+            isVisible: game.isVisible,
             playUrl: `/games/${game._id}/play`,
             createdAt: (game as any).createdAt,
         };
@@ -198,6 +247,74 @@ export class GamesService {
         return entryPath;
     }
 
+    async updateGame(
+        id: string,
+        updateGameDto: UpdateGameDto,
+        thumbnailFile?: Express.Multer.File,
+    ) {
+        const game = await this.gameModel.findById(id);
+        if (!game) {
+            throw new NotFoundException('Game not found');
+        }
+
+        // Update fields
+        if (updateGameDto.title !== undefined) {
+            game.title = updateGameDto.title;
+        }
+        if (updateGameDto.description !== undefined) {
+            game.description = updateGameDto.description;
+        }
+        if (updateGameDto.isVisible !== undefined) {
+            game.isVisible = updateGameDto.isVisible;
+        }
+
+        // Handle thumbnail update
+        if (thumbnailFile) {
+            // Remove old thumbnail if exists
+            if (game.thumbnailUrl) {
+                const oldPath = path.join(process.cwd(), game.thumbnailUrl);
+                if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                }
+            }
+
+            const thumbExt = path.extname(thumbnailFile.originalname).toLowerCase();
+            const thumbFilename = `${game.slug}${thumbExt}`;
+            const thumbDest = path.join(this.thumbnailsDir, thumbFilename);
+            fs.copyFileSync(thumbnailFile.path, thumbDest);
+            fs.unlinkSync(thumbnailFile.path);
+            game.thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
+        }
+
+        await game.save();
+
+        return {
+            message: 'Game updated successfully',
+            game: {
+                id: game._id,
+                title: game.title,
+                description: game.description,
+                isVisible: game.isVisible,
+                thumbnailUrl: game.thumbnailUrl,
+            },
+        };
+    }
+
+    async toggleVisibility(id: string) {
+        const game = await this.gameModel.findById(id);
+        if (!game) {
+            throw new NotFoundException('Game not found');
+        }
+
+        game.isVisible = !game.isVisible;
+        await game.save();
+
+        return {
+            message: `Game is now ${game.isVisible ? 'visible' : 'hidden'}`,
+            isVisible: game.isVisible,
+        };
+    }
+
     async deleteGame(id: string, userId: string) {
         const game = await this.gameModel.findById(id);
         if (!game) {
@@ -212,6 +329,14 @@ export class GamesService {
         // Delete game files
         if (fs.existsSync(game.filePath)) {
             fs.rmSync(game.filePath, { recursive: true, force: true });
+        }
+
+        // Delete thumbnail
+        if (game.thumbnailUrl) {
+            const thumbPath = path.join(process.cwd(), game.thumbnailUrl);
+            if (fs.existsSync(thumbPath)) {
+                fs.unlinkSync(thumbPath);
+            }
         }
 
         // Delete from database
