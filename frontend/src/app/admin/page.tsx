@@ -16,6 +16,8 @@ import {
     Loader2,
     ImagePlus,
     Save,
+    Play,
+    ShieldAlert,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
@@ -218,6 +220,7 @@ export default function AdminDashboardPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const [editingGame, setEditingGame] = useState<AdminGame | null>(null);
+    const [previewGameId, setPreviewGameId] = useState<string | null>(null);
 
     useEffect(() => {
         hydrate();
@@ -293,6 +296,18 @@ export default function AdminDashboardPage() {
         return (
             <div className="mx-auto max-w-6xl px-4 py-16 text-center">
                 <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+        );
+    }
+
+    if (user.role !== 'admin') {
+        return (
+            <div className="mx-auto max-w-xl px-4 py-24 text-center">
+                <ShieldAlert className="mx-auto mb-4 h-12 w-12 text-destructive/60" />
+                <h1 className="text-xl font-bold">Access Denied</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                    You do not have admin privileges to access this page.
+                </p>
             </div>
         );
     }
@@ -440,8 +455,8 @@ export default function AdminDashboardPage() {
                                                 onClick={() => handleToggleVisibility(game._id)}
                                                 disabled={togglingId === game._id}
                                                 className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${game.isVisible
-                                                        ? "border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-950 dark:text-green-400"
-                                                        : "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
+                                                    ? "border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-950 dark:text-green-400"
+                                                    : "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400"
                                                     }`}
                                                 title={
                                                     game.isVisible ? "Click to hide" : "Click to show"
@@ -474,6 +489,13 @@ export default function AdminDashboardPage() {
                                                     <ExternalLink className="h-3.5 w-3.5" />
                                                 </a>
                                                 <button
+                                                    onClick={() => setPreviewGameId(game._id)}
+                                                    className="p-1.5 text-muted-foreground transition-colors hover:text-primary"
+                                                    title="Preview game file"
+                                                >
+                                                    <Play className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
                                                     onClick={() => handleDelete(game._id, game.title)}
                                                     disabled={deletingId === game._id}
                                                     className="p-1.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
@@ -503,6 +525,26 @@ export default function AdminDashboardPage() {
                     onClose={() => setEditingGame(null)}
                     onSaved={handleGameUpdated}
                 />
+            )}
+
+            {/* Preview Iframe */}
+            {previewGameId && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-black/50">
+                    <div className="flex items-center justify-between border-b border-border bg-background px-4 py-2">
+                        <span className="text-sm font-semibold">Game Preview</span>
+                        <button
+                            onClick={() => setPreviewGameId(null)}
+                            className="p-1 text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                    <iframe
+                        src={`${API_BASE}/games/${previewGameId}/play`}
+                        className="flex-1 bg-white"
+                        title="Game preview"
+                    />
+                </div>
             )}
         </div>
     );

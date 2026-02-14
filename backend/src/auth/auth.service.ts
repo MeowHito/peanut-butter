@@ -42,6 +42,7 @@ export class AuthService {
             username,
             email,
             password: hashedPassword,
+            role: 'user',
         });
 
         // Generate JWT
@@ -53,6 +54,7 @@ export class AuthService {
                 id: user._id,
                 username: user.username,
                 email: user.email,
+                role: user.role,
             },
             access_token: token,
         };
@@ -82,6 +84,7 @@ export class AuthService {
                 id: user._id,
                 username: user.username,
                 email: user.email,
+                role: user.role,
             },
             access_token: token,
         };
@@ -96,6 +99,7 @@ export class AuthService {
             id: user._id,
             username: user.username,
             email: user.email,
+            role: user.role,
             createdAt: (user as any).createdAt,
         };
     }
@@ -105,6 +109,7 @@ export class AuthService {
             sub: user._id,
             email: user.email,
             username: user.username,
+            role: user.role,
         };
         return this.jwtService.sign(payload);
     }

@@ -72,8 +72,8 @@ export default function Navbar() {
                             key={link.href}
                             href={link.href}
                             className={`px-3 py-1.5 text-sm font-medium transition-colors ${isActive(link.href)
-                                    ? "text-foreground"
-                                    : "text-muted-foreground hover:text-foreground"
+                                ? "text-foreground"
+                                : "text-muted-foreground hover:text-foreground"
                                 }`}
                         >
                             {link.label}
@@ -83,8 +83,8 @@ export default function Navbar() {
                         <Link
                             href="/upload"
                             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${isActive("/upload")
-                                    ? "text-foreground"
-                                    : "text-muted-foreground hover:text-foreground"
+                                ? "text-foreground"
+                                : "text-muted-foreground hover:text-foreground"
                                 }`}
                         >
                             <Upload className="h-3.5 w-3.5" />
@@ -115,14 +115,16 @@ export default function Navbar() {
                                         <User className="h-3.5 w-3.5" />
                                         Profile
                                     </Link>
-                                    <Link
-                                        href="/admin"
-                                        onClick={() => setDropdownOpen(false)}
-                                        className="flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-accent"
-                                    >
-                                        <Shield className="h-3.5 w-3.5" />
-                                        Admin
-                                    </Link>
+                                    {user.role === 'admin' && (
+                                        <Link
+                                            href="/admin"
+                                            onClick={() => setDropdownOpen(false)}
+                                            className="flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-accent"
+                                        >
+                                            <Shield className="h-3.5 w-3.5" />
+                                            Admin
+                                        </Link>
+                                    )}
                                     <hr className="border-border" />
                                     <button
                                         onClick={handleLogout}
@@ -171,8 +173,8 @@ export default function Navbar() {
                                 href={link.href}
                                 onClick={() => setMobileOpen(false)}
                                 className={`px-3 py-2 text-sm font-medium transition-colors ${isActive(link.href)
-                                        ? "bg-accent text-foreground"
-                                        : "text-muted-foreground hover:text-foreground"
+                                    ? "bg-accent text-foreground"
+                                    : "text-muted-foreground hover:text-foreground"
                                     }`}
                             >
                                 {link.label}
@@ -199,14 +201,16 @@ export default function Navbar() {
                                     <User className="h-3.5 w-3.5" />
                                     Profile
                                 </Link>
-                                <Link
-                                    href="/admin"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                                >
-                                    <Shield className="h-3.5 w-3.5" />
-                                    Admin
-                                </Link>
+                                {user.role === 'admin' && (
+                                    <Link
+                                        href="/admin"
+                                        onClick={() => setMobileOpen(false)}
+                                        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                    >
+                                        <Shield className="h-3.5 w-3.5" />
+                                        Admin
+                                    </Link>
+                                )}
                                 <button
                                     onClick={() => {
                                         handleLogout();

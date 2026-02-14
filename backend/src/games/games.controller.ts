@@ -25,6 +25,7 @@ import { GamesService } from './games.service';
 import { UploadGameDto } from './dto/upload-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 const tempUploadDir = path.join(process.cwd(), 'uploads', 'temp');
 
@@ -82,7 +83,7 @@ export class GamesController {
 
     // Admin listing — all games
     @Get('admin/all')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, AdminGuard)
     async findAllAdmin(
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
         @Query('limit', new DefaultValuePipe(100), ParseIntPipe) limit: number,
@@ -103,7 +104,7 @@ export class GamesController {
 
     // Update game details (admin)
     @Patch(':id')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, AdminGuard)
     @UseInterceptors(
         FileInterceptor('thumbnail', {
             storage: multerStorage,
@@ -122,13 +123,13 @@ export class GamesController {
 
     // Toggle visibility (admin)
     @Patch(':id/visibility')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, AdminGuard)
     async toggleVisibility(@Param('id') id: string) {
         return this.gamesService.toggleVisibility(id);
     }
 
     @Delete(':id')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, AdminGuard)
     async deleteGame(@Param('id') id: string, @Request() req) {
         return this.gamesService.deleteGame(id, req.user._id);
     }
