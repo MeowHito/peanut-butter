@@ -77,8 +77,11 @@ export class GamesController {
     async findAll(
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
         @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+        @Query('search') search?: string,
+        @Query('genre') genre?: string,
+        @Query('sortBy') sortBy?: string,
     ) {
-        return this.gamesService.findAll(page, limit);
+        return this.gamesService.findAll(page, limit, search, genre, sortBy);
     }
 
     // Admin listing — all games
@@ -98,6 +101,7 @@ export class GamesController {
 
     @Get(':id/play')
     async playGame(@Param('id') id: string, @Res() res: Response) {
+        await this.gamesService.incrementPlayCount(id);
         const filePath = await this.gamesService.getGamePlayPath(id);
         return res.sendFile(filePath);
     }
@@ -132,5 +136,10 @@ export class GamesController {
     @UseGuards(JwtAuthGuard, AdminGuard)
     async deleteGame(@Param('id') id: string, @Request() req) {
         return this.gamesService.deleteGame(id, req.user._id);
+    }
+
+    @Post(':id/play') // Route นี้เพื่อให้นับยอดเล่นได้
+    async play(@Param('id') id: string) {
+    return this.gamesService.incrementPlayCount(id);
     }
 }

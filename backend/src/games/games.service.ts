@@ -131,6 +131,7 @@ export class GamesService {
             title: uploadGameDto.title,
             description: uploadGameDto.description || '',
             slug,
+            genre: uploadGameDto.genre,
             uploadedBy: new Types.ObjectId(userId),
             filePath: gameDir,
             entryFile,
@@ -158,18 +159,42 @@ export class GamesService {
     }
 
     // Public listing — only visible games
-    async findAll(page = 1, limit = 20) {
+    async findAll(page = 1, limit = 20, search?: string, genre?: string, sortBy?: string) {
         const skip = (page - 1) * limit;
+
+        // search
+        const query: any = { isVisible: true };
+
+    if (search) {
+        query.$or = [
+            { title: { $regex: search, $options: 'i' } },
+            { description: { $regex: search, $options: 'i' } }
+        ];
+    }
+
+    if (genre) {
+        query.genre = genre;
+    }
+
+    let sortOption: any = { createdAt: -1 }; // default sorting
+    if (sortBy === 'mostPlayed') {
+        sortOption = { playCount: -1 };
+    } else if (sortBy === 'oldest') {
+        sortOption = { createdAt: 1 };
+    } else if (sortBy === 'topRated') {
+        sortOption = { rating: -1 };
+        
+    }
 
         const [games, total] = await Promise.all([
             this.gameModel
-                .find({ isVisible: true })
+                .find(query)
                 .populate('uploadedBy', 'username')
-                .sort({ createdAt: -1 })
+                .sort(sortOption)
                 .skip(skip)
                 .limit(limit)
                 .select('-filePath -entryFile'),
-            this.gameModel.countDocuments({ isVisible: true }),
+            this.gameModel.countDocuments(query),
         ]);
 
         return {
@@ -209,6 +234,13 @@ export class GamesService {
         };
     }
 
+    async incrementPlayCount(id: string) {
+    return this.gameModel.findByIdAndUpdate(
+        id,
+        { $inc: { playCount: 1 } },
+        { new: true }
+    ).exec();
+}
     async findOne(id: string) {
         const game = await this.gameModel
             .findById(id)
@@ -263,6 +295,9 @@ export class GamesService {
         }
         if (updateGameDto.description !== undefined) {
             game.description = updateGameDto.description;
+        }
+        if (updateGameDto.genre !== undefined) {
+            game.genre = updateGameDto.genre;
         }
         if (updateGameDto.isVisible !== undefined) {
             game.isVisible = updateGameDto.isVisible;

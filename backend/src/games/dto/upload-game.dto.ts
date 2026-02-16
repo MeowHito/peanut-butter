@@ -10,4 +10,8 @@ export class UploadGameDto {
     @IsOptional()
     @MaxLength(500)
     description?: string;
+
+    @IsString()
+    @IsNotEmpty()
+    genre: string;
 }

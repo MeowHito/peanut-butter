@@ -34,6 +34,16 @@ export class Game {
 
     @Prop({ default: false })
     isVisible: boolean;
+
+    @Prop({ default: 0 })
+    playCount: number;
+
+    @Prop({ trim: true, index: true }) 
+    genre: string;
+
+    @Prop({ default: 0, index: true })
+    rating: number;
+    
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);
@@ -43,3 +53,9 @@ GameSchema.index({ createdAt: -1 });
 
 // Compound index for user's games
 GameSchema.index({ uploadedBy: 1, createdAt: -1 });
+
+// Index สำหรับการค้นหาด้วยชื่อเกม (Text Search)
+GameSchema.index({ title: 'text' });
+
+// Index สำหรับการกรองตามหมวดหมู่และเรียงตามยอดเล่น
+GameSchema.index({ genre: 1, playCount: -1 });
