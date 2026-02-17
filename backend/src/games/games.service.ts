@@ -130,6 +130,7 @@ export class GamesService {
         const game = await this.gameModel.create({
             title: uploadGameDto.title,
             description: uploadGameDto.description || '',
+            category: uploadGameDto.category,
             slug,
             uploadedBy: new Types.ObjectId(userId),
             filePath: gameDir,
@@ -158,18 +159,23 @@ export class GamesService {
     }
 
     // Public listing — only visible games
-    async findAll(page = 1, limit = 20) {
+    async findAll(page = 1, limit = 20, category?: string) {
         const skip = (page - 1) * limit;
+
+        const filter: any = { isVisible: true };
+        if (category) {
+            filter.category = category;
+        }
 
         const [games, total] = await Promise.all([
             this.gameModel
-                .find({ isVisible: true })
+                .find(filter)
                 .populate('uploadedBy', 'username')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .select('-filePath -entryFile'),
-            this.gameModel.countDocuments({ isVisible: true }),
+            this.gameModel.countDocuments(filter),
         ]);
 
         return {
@@ -182,6 +188,7 @@ export class GamesService {
             },
         };
     }
+
 
     // Admin listing — all games regardless of visibility
     async findAllAdmin(page = 1, limit = 100) {
@@ -259,14 +266,20 @@ export class GamesService {
 
         // Update fields
         if (updateGameDto.title !== undefined) {
-            game.title = updateGameDto.title;
-        }
+  game.title = updateGameDto.title;
+  game.slug = this.generateSlug(updateGameDto.title);
+}
+
         if (updateGameDto.description !== undefined) {
             game.description = updateGameDto.description;
         }
         if (updateGameDto.isVisible !== undefined) {
             game.isVisible = updateGameDto.isVisible;
         }
+        if (updateGameDto.category !== undefined) {
+            game.category = updateGameDto.category;
+        }
+
 
         // Handle thumbnail update
         if (thumbnailFile) {
@@ -298,24 +311,31 @@ export class GamesService {
                 thumbnailUrl: game.thumbnailUrl,
             },
         };
+
     }
 
-    async toggleVisibility(id: string) {
-        const game = await this.gameModel.findById(id);
-        if (!game) {
-            throw new NotFoundException('Game not found');
-        }
+    async toggleFeatured(id: string) {
+  const game = await this.gameModel.findById(id);
+  if (!game) throw new NotFoundException('Game not found');
 
-        game.isVisible = !game.isVisible;
-        await game.save();
+  game.isFeatured = !game.isFeatured;
+  await game.save();
 
-        return {
-            message: `Game is now ${game.isVisible ? 'visible' : 'hidden'}`,
-            isVisible: game.isVisible,
-        };
-    }
+  return {
+    message: `Game is now ${game.isFeatured ? 'featured' : 'normal'}`,
+    isFeatured: game.isFeatured,
+  };
+}
 
-    async deleteGame(id: string, userId: string) {
+async findFeatured() {
+  return this.gameModel
+    .find({ isVisible: true, isFeatured: true })
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .select('-filePath -entryFile');
+}
+
+    async deleteGame(id: string, userId: string, role: string) {
         const game = await this.gameModel.findById(id);
         if (!game) {
             throw new NotFoundException('Game not found');
@@ -343,6 +363,24 @@ export class GamesService {
         await this.gameModel.findByIdAndDelete(id);
 
         return { message: 'Game deleted successfully' };
+    }
+    async countByCategory() {
+        const result = await this.gameModel.aggregate([
+            {
+                $match: { isVisible: true } // นับเฉพาะเกมที่แสดง
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { _id: 1 }
+            }
+        ]);
+
+        return result;
     }
 
     private generateSlug(title: string): string {
@@ -381,4 +419,22 @@ export class GamesService {
 
         return null;
     }
+   async adminStats() {
+  const total = await this.gameModel.countDocuments();
+  const visible = await this.gameModel.countDocuments({ isVisible: true });
+  const featured = await this.gameModel.countDocuments({ isFeatured: true });
+
+  const sizeAgg = await this.gameModel.aggregate([
+    { $group: { _id: null, totalSize: { $sum: '$fileSize' } } }
+  ]);
+
+  return {
+    total,
+    visible,
+    featured,
+    totalSize: sizeAgg[0]?.totalSize || 0,
+  };
+}
+
+
 }

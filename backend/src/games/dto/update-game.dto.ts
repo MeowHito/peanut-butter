@@ -1,4 +1,5 @@
-import { IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, MaxLength, IsEnum } from 'class-validator';
+import { GameCategory } from '../schemas/game.schema';
 
 export class UpdateGameDto {
     @IsString()
@@ -14,4 +15,8 @@ export class UpdateGameDto {
     @IsBoolean()
     @IsOptional()
     isVisible?: boolean;
+
+    @IsEnum(GameCategory)
+    @IsOptional()
+    category?: GameCategory;
 }

@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { GameCategory } from '../schemas/game.schema';
 
 export class UploadGameDto {
     @IsString()
@@ -10,4 +11,8 @@ export class UploadGameDto {
     @IsOptional()
     @MaxLength(500)
     description?: string;
+
+    @IsEnum(GameCategory)
+    @IsNotEmpty()
+    category: GameCategory;
 }

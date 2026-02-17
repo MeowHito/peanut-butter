@@ -13,3 +13,4 @@ export class AdminGuard implements CanActivate {
         return true;
     }
 }
+//ทำให้แอดมินมีเอพีไอ ให้จัดการยูเซอได้

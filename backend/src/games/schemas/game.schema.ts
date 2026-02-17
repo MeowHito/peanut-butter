@@ -1,6 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-
+export enum GameCategory {
+    ACTION = 'Action',
+    ADVENTURE = 'Adventure',
+    PUZZLE = 'Puzzle',
+    ARCADE = 'Arcade',
+    RPG = 'RPG',
+}
 export type GameDocument = Game & Document;
 
 @Schema({ timestamps: true })
@@ -34,6 +40,17 @@ export class Game {
 
     @Prop({ default: false })
     isVisible: boolean;
+
+    @Prop({ default: false, index: true })
+    isFeatured: boolean;
+
+    @Prop({
+        required: true,
+        enum: GameCategory,
+        index: true,
+    })
+    category: GameCategory;
+
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

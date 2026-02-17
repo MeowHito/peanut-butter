@@ -46,6 +46,7 @@ const multerStorage = diskStorage({
 export class GamesController {
     constructor(private readonly gamesService: GamesService) { }
 
+    // ================= UPLOAD =================
     @Post('upload')
     @UseGuards(JwtAuthGuard)
     @UseInterceptors(
@@ -56,14 +57,13 @@ export class GamesController {
             ],
             {
                 storage: multerStorage,
-                limits: {
-                    fileSize: 50 * 1024 * 1024, // 50MB
-                },
+                limits: { fileSize: 50 * 1024 * 1024 },
             },
         ),
     )
     async uploadGame(
-        @UploadedFiles() files: { gameFile?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
+        @UploadedFiles()
+        files: { gameFile?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
         @Body() uploadGameDto: UploadGameDto,
         @Request() req,
     ) {
@@ -72,16 +72,17 @@ export class GamesController {
         return this.gamesService.uploadGame(gameFile!, uploadGameDto, req.user._id, thumbnailFile);
     }
 
-    // Public listing — only visible games
+    // ================= PUBLIC LIST =================
     @Get()
     async findAll(
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
         @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+        @Query('category') category?: string,
     ) {
-        return this.gamesService.findAll(page, limit);
+        return this.gamesService.findAll(page, limit, category);
     }
 
-    // Admin listing — all games
+    // ================= ADMIN LIST =================
     @Get('admin/all')
     @UseGuards(JwtAuthGuard, AdminGuard)
     async findAllAdmin(
@@ -91,26 +92,38 @@ export class GamesController {
         return this.gamesService.findAllAdmin(page, limit);
     }
 
+    // ================= CATEGORY COUNT =================
+    @Get('categories/count')
+    async countByCategory() {
+        return this.gamesService.countByCategory();
+    }
+
+    // ================= FEATURED (PUBLIC) =================
+    @Get('featured')
+    async findFeatured() {
+        return this.gamesService.findFeatured();
+    }
+
+    // ================= GAME DETAIL =================
     @Get(':id')
     async findOne(@Param('id') id: string) {
         return this.gamesService.findOne(id);
     }
 
+    // ================= PLAY GAME =================
     @Get(':id/play')
     async playGame(@Param('id') id: string, @Res() res: Response) {
         const filePath = await this.gamesService.getGamePlayPath(id);
         return res.sendFile(filePath);
     }
 
-    // Update game details (admin)
+    // ================= UPDATE (ADMIN) =================
     @Patch(':id')
     @UseGuards(JwtAuthGuard, AdminGuard)
     @UseInterceptors(
         FileInterceptor('thumbnail', {
             storage: multerStorage,
-            limits: {
-                fileSize: 5 * 1024 * 1024, // 5MB for thumbnail
-            },
+            limits: { fileSize: 5 * 1024 * 1024 },
         }),
     )
     async updateGame(
@@ -121,16 +134,28 @@ export class GamesController {
         return this.gamesService.updateGame(id, updateGameDto, thumbnailFile);
     }
 
-    // Toggle visibility (admin)
-    @Patch(':id/visibility')
+    // ================= TOGGLE FEATURED (ADMIN) =================
+    @Patch(':id/featured')
     @UseGuards(JwtAuthGuard, AdminGuard)
-    async toggleVisibility(@Param('id') id: string) {
-        return this.gamesService.toggleVisibility(id);
+    async toggleFeatured(@Param('id') id: string) {
+        return this.gamesService.toggleFeatured(id);
     }
 
+    // ================= DELETE (ADMIN) =================
     @Delete(':id')
     @UseGuards(JwtAuthGuard, AdminGuard)
     async deleteGame(@Param('id') id: string, @Request() req) {
-        return this.gamesService.deleteGame(id, req.user._id);
+        return this.gamesService.deleteGame(
+            id,
+            req.user._id,
+            req.user.role
+        );
+
     }
+    @Get('admin/stats')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    adminStats() {
+        return this.gamesService.adminStats();
+    }
+
 }
