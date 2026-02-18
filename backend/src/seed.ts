@@ -37,14 +37,15 @@ async function seed() {
 
     const admin = await User.create({
       username: 'admin',
+      email: 'admin@peanutbutter.com',
       password: adminPassword,
       role: 'admin',
     });
 
     // ================= USERS =================
     const users = await User.insertMany([
-      { username: 'user1', password: adminPassword, role: 'user' },
-      { username: 'user2', password: adminPassword, role: 'user' },
+      { username: 'user1', email: 'user1@peanutbutter.com', password: adminPassword, role: 'user' },
+      { username: 'user2', email: 'user2@peanutbutter.com', password: adminPassword, role: 'user' },
     ]);
 
     // ================= GAMES =================
