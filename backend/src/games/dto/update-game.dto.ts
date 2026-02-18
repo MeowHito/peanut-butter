@@ -12,6 +12,10 @@ export class UpdateGameDto {
     @MaxLength(500)
     description?: string;
 
+    @IsString()
+    @IsOptional()
+    genre?: string;
+
     @IsBoolean()
     @IsOptional()
     isVisible?: boolean;

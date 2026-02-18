@@ -84,6 +84,7 @@ describe('Games (e2e)', () => {
                 .set('Authorization', `Bearer ${accessToken}`)
                 .field('title', `Test HTML Game ${Date.now()}`)
                 .field('description', 'A test HTML game')
+                .field('category', 'Action')
                 .attach('gameFile', testHtmlPath)
                 .expect(201);
 
@@ -100,6 +101,7 @@ describe('Games (e2e)', () => {
                 .set('Authorization', `Bearer ${accessToken}`)
                 .field('title', `Test ZIP Game ${Date.now()}`)
                 .field('description', 'A test ZIP game')
+                .field('category', 'Action')
                 .attach('gameFile', testZipPath)
                 .expect(201);
 
@@ -131,6 +133,7 @@ describe('Games (e2e)', () => {
                 .post('/games/upload')
                 .set('Authorization', `Bearer ${accessToken}`)
                 .field('title', title)
+                .field('category', 'Action')
                 .attach('gameFile', testHtmlPath)
                 .expect(201);
 
@@ -139,6 +142,7 @@ describe('Games (e2e)', () => {
                 .post('/games/upload')
                 .set('Authorization', `Bearer ${accessToken}`)
                 .field('title', title)
+                .field('category', 'Action')
                 .attach('gameFile', testHtmlPath)
                 .expect(400);
         });

@@ -78,8 +78,11 @@ export class GamesController {
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
         @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
         @Query('category') category?: string,
+        @Query('search') search?: string,
+        @Query('genre') genre?: string,
+        @Query('sortBy') sortBy?: string,
     ) {
-        return this.gamesService.findAll(page, limit, category);
+        return this.gamesService.findAll(page, limit, category, search, genre, sortBy);
     }
 
     // ================= ADMIN LIST =================
@@ -104,6 +107,13 @@ export class GamesController {
         return this.gamesService.findFeatured();
     }
 
+    // ================= ADMIN STATS =================
+    @Get('admin/stats')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    adminStats() {
+        return this.gamesService.adminStats();
+    }
+
     // ================= GAME DETAIL =================
     @Get(':id')
     async findOne(@Param('id') id: string) {
@@ -113,6 +123,7 @@ export class GamesController {
     // ================= PLAY GAME =================
     @Get(':id/play')
     async playGame(@Param('id') id: string, @Res() res: Response) {
+        await this.gamesService.incrementPlayCount(id);
         const filePath = await this.gamesService.getGamePlayPath(id);
         return res.sendFile(filePath);
     }
@@ -152,10 +163,4 @@ export class GamesController {
         );
 
     }
-    @Get('admin/stats')
-    @UseGuards(JwtAuthGuard, AdminGuard)
-    adminStats() {
-        return this.gamesService.adminStats();
-    }
-
 }

@@ -58,11 +58,14 @@ async function seed() {
       const randomCategory =
         categories[Math.floor(Math.random() * categories.length)];
 
+      const genres = ['Action', 'Puzzle', 'RPG', 'Adventure', 'Strategy'];
+
       games.push({
         title: `Game ${i}`,
         description: 'Demo game',
         slug: `game-${i}`,
         category: randomCategory.name, // ถ้า schema เป็น enum string
+        genre: genres[Math.floor(Math.random() * genres.length)],
         uploadedBy: randomUser._id,
         filePath: '/uploads/demo',
         entryFile: 'index.html',
@@ -71,6 +74,7 @@ async function seed() {
         thumbnailUrl: '',
         isVisible: true,
         isFeatured: i % 3 === 0,
+        playCount: Math.floor(Math.random() * 100),
       });
     }
 

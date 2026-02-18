@@ -15,4 +15,9 @@ export class UploadGameDto {
     @IsEnum(GameCategory)
     @IsNotEmpty()
     category: GameCategory;
+
+    @IsString()
+    @IsOptional()
+    genre?: string;
 }
+
