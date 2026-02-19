@@ -24,13 +24,19 @@ export default function RegisterPage() {
             return;
         }
 
-        if (password.length < 6) {
+        if (password.trim().length < 6) {
             setError("Password must be at least 6 characters");
             return;
         }
 
+        if (!username.trim()) {
+            setError("Username is required");
+            return;
+        }
+
+
         try {
-            await register(username, email, password);
+            await register(username.trim(), email.trim(), password.trim());
             router.push("/");
         } catch (err: unknown) {
             const axiosErr = err as { response?: { data?: { message?: string } } };

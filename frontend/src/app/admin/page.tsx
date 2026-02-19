@@ -424,7 +424,7 @@ export default function AdminDashboardPage() {
                                                         <Gamepad2 className="h-3 w-3 text-muted-foreground" />
                                                     </div>
                                                 )}
-                                                <span className="font-medium truncate max-w-[200px]">
+                                                <span className="font-medium truncate max-w-50">
                                                     {game.title}
                                                 </span>
                                             </div>
