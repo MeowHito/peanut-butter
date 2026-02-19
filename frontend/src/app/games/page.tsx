@@ -11,12 +11,22 @@ export default function BrowseGamesPage() {
     const [pagination, setPagination] = useState<PaginationMeta | null>(null);
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [category, setCategory] = useState("");
+    const [sortBy, setSortBy] = useState("");
+
     const limit = 20;
 
     const fetchGames = useCallback(async (p: number) => {
         setLoading(true);
         try {
-            const res = await api.get("/games", { params: { page: p, limit } });
+            const res = await api.get("/games", {  params: {
+        page: p,
+        limit,
+        search: search || undefined,
+        category: category || undefined,
+        sortBy: sortBy || undefined,
+      }, });
             setGames(res.data.games);
             setPagination(res.data.pagination);
         } catch {
@@ -24,7 +34,7 @@ export default function BrowseGamesPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [search, category, sortBy]);
 
     useEffect(() => {
         fetchGames(page);
@@ -34,7 +44,7 @@ export default function BrowseGamesPage() {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
             {/* Header */}
             <div className="mb-8">
-                <h1 className="text-2xl font-bold tracking-tight">Browse Games</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Browse Games</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                     Discover and play HTML games from the community
                     {pagination && (
@@ -44,10 +54,55 @@ export default function BrowseGamesPage() {
                     )}
                 </p>
             </div>
+            
+            {/* Filters */}
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <input
+                value={search}
+                onChange={(e) => {
+                setPage(1);
+                setSearch(e.target.value);
+                }}
+                placeholder="Search games..."
+                className="w-full sm:w-auto border border-border px-3 py-2 text-sm"
+
+            />
+
+            <select
+                value={category}
+                onChange={(e) => {
+                setPage(1);
+                setCategory(e.target.value);
+                }}
+                className="w-full sm:w-auto border border-border px-3 py-2 text-sm"
+
+            >
+                <option value="">All Categories</option>
+                <option value="Action">Action</option>
+                <option value="Adventure">Adventure</option>
+                <option value="Puzzle">Puzzle</option>
+                <option value="Arcade">Arcade</option>
+                <option value="RPG">RPG</option>
+            </select>
+
+            <select
+                value={sortBy}
+                onChange={(e) => {
+                setPage(1);
+                setSortBy(e.target.value);
+                }}
+                className="w-full sm:w-auto border border-border px-3 py-2 text-sm"
+
+            >
+                <option value="">Newest</option>
+                <option value="mostPlayed">Most Played</option>
+            </select>
+            </div>
+        
 
             {/* Game Grid */}
             {loading ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                     {Array.from({ length: limit }).map((_, i) => (
                         <div key={i} className="border border-border">
                             <div className="h-40 animate-pulse bg-muted" />
@@ -59,7 +114,8 @@ export default function BrowseGamesPage() {
                     ))}
                 </div>
             ) : games.length > 0 ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+
                     {games.map((game) => (
                         <GameCard key={game._id} game={game} />
                     ))}
@@ -73,7 +129,8 @@ export default function BrowseGamesPage() {
 
             {/* Pagination */}
             {pagination && pagination.totalPages > 1 && (
-                <div className="mt-8 flex items-center justify-center gap-2">
+                <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+
                     <button
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={page <= 1}

@@ -11,7 +11,6 @@ import {
     Archive,
     Calendar,
     User,
-    HardDrive,
     X,
 } from "lucide-react";
 import api from "@/lib/api";
@@ -147,10 +146,6 @@ export default function GameDetailPage() {
                             )}
                             {game.fileType.toUpperCase()} · {formatSize(game.fileSize)}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                            <HardDrive className="h-3.5 w-3.5" />
-                            {formatSize(game.fileSize)}
-                        </span>
                     </div>
 
                     {/* Play button */}
@@ -194,7 +189,7 @@ export default function GameDetailPage() {
                     </div>
                     <iframe
                         src={`${API_BASE}/games/${id}/play`}
-                        className="h-[600px] w-full bg-white"
+                        className="h-150 w-full bg-white"
                         title={game.title}
                         sandbox="allow-scripts allow-same-origin"
                     />

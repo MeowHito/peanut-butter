@@ -24,22 +24,39 @@ export default function UploadPage() {
     const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState("");
+    const [progress, setProgress] = useState(0);
+    const [category, setCategory] = useState("");
+    const [genre, setGenre] = useState("");
+    const [isReady, setIsReady] = useState(false);
 
-    useEffect(() => {
-        hydrate();
+   useEffect(() => {
+        const init = async () => {
+            await hydrate();
+            setIsReady(true);
+        };
+        init();
     }, [hydrate]);
 
+
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            const token = localStorage.getItem("token");
-            if (!token) {
-                router.push("/login");
-            }
+        if (isReady && !user) {
+            router.push("/login");
         }
-    }, [router]);
+    }, [isReady, user, router]);
+
+    useEffect(() => {
+        if (!thumbnailPreview) return;
+
+        return () => {
+            URL.revokeObjectURL(thumbnailPreview);
+        };
+    }, [thumbnailPreview]);
+
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
-        if (acceptedFiles.length > 0) {
+        setError("");
+
+        if (acceptedFiles.length === 0) return; 
             const f = acceptedFiles[0];
             const ext = f.name.split(".").pop()?.toLowerCase();
             if (ext !== "html" && ext !== "zip") {
@@ -51,8 +68,8 @@ export default function UploadPage() {
                 return;
             }
             setFile(f);
-            setError("");
-        }
+            setProgress(0);
+            
     }, []);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -61,6 +78,7 @@ export default function UploadPage() {
         accept: {
             "text/html": [".html"],
             "application/zip": [".zip"],
+            "application/x-zip-compressed": [".zip"],
         },
     });
 
@@ -75,13 +93,21 @@ export default function UploadPage() {
             setError("Thumbnail must be under 5MB");
             return;
         }
-        setThumbnail(f);
+
+       setThumbnail(f);
+
+        if (thumbnailPreview) {
+            URL.revokeObjectURL(thumbnailPreview);
+        }
+
         setThumbnailPreview(URL.createObjectURL(f));
         setError("");
-    };
 
+    };   
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (uploading) return;
+
         if (!file) {
             setError("Please select a game file");
             return;
@@ -90,33 +116,62 @@ export default function UploadPage() {
             setError("Please enter a title");
             return;
         }
-
+        if (!category) {
+            setError("Please select a category");
+            return;
+        }
+        
         setUploading(true);
         setError("");
+        setProgress(0);
+
 
         const formData = new FormData();
         formData.append("gameFile", file);
         formData.append("title", title.trim());
+        formData.append("category", category);
+
         if (description.trim()) {
             formData.append("description", description.trim());
         }
+        if (genre.trim()) {
+            formData.append("genre", genre.trim());
+        }
+
         if (thumbnail) {
             formData.append("thumbnail", thumbnail);
         }
 
         try {
-            const res = await api.post("/games/upload", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-            });
-            router.push(`/games/${res.data.game.id}`);
+           const res = await api.post("/games/upload", formData, {
+            onUploadProgress: (progressEvent) => {
+                if (!progressEvent.total) return;
+                const percent = Math.round(
+                    (progressEvent.loaded * 100) / progressEvent.total
+                );
+                setProgress(percent);
+            },
+        });
+           
+            const gameId = res.data?.game?.id;
+            if (!gameId) {
+                setError("Upload succeeded but no game ID returned");
+                return;
+            }
+
+            router.push(`/games/${gameId}`);
+
         } catch (err: unknown) {
             const axiosErr = err as { response?: { data?: { message?: string } } };
             setError(
                 axiosErr.response?.data?.message || "Upload failed. Please try again."
             );
-            setUploading(false);
+            
+        }finally {
+          setUploading(false);
         }
     };
+    if (!isReady) return null;
 
     if (!user) {
         return (
@@ -149,6 +204,41 @@ export default function UploadPage() {
                         className="w-full border border-border bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none"
                     />
                 </div>
+
+                {/* Category */}
+                <div>
+                <label className="block text-sm font-medium mb-1.5">
+                    Category <span className="text-destructive">*</span>
+                </label>
+
+                <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                    <option value="">Select category</option>
+                    <option value="Action">Action</option>
+                    <option value="Adventure">Adventure</option>
+                    <option value="Puzzle">Puzzle</option>
+                    <option value="Arcade">Arcade</option>
+                    <option value="RPG">RPG</option>
+                </select>
+                </div>
+
+            {/* Genre */}
+                <div>
+                <label className="block text-sm font-medium mb-1.5">
+                    Genre
+                </label>
+                <input
+                    type="text"
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                    placeholder="e.g. Platformer, Horror"
+                    className="w-full border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                />
+                </div>
+
 
                 {/* Description */}
                 <div>
@@ -183,6 +273,9 @@ export default function UploadPage() {
                             <button
                                 type="button"
                                 onClick={() => {
+                                    if (thumbnailPreview) {
+                                        URL.revokeObjectURL(thumbnailPreview);
+                                    }
                                     setThumbnail(null);
                                     setThumbnailPreview(null);
                                 }}
@@ -230,7 +323,10 @@ export default function UploadPage() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setFile(null)}
+                                onClick={() => {
+                                    setFile(null);
+                                    setProgress(0);
+                                }}
                                 className="text-muted-foreground transition-colors hover:text-destructive"
                             >
                                 <X className="h-4 w-4" />
@@ -257,6 +353,17 @@ export default function UploadPage() {
                         </div>
                     )}
                 </div>
+
+                {/* Progress Bar */}
+                {uploading && (
+                    <div className="w-full bg-muted h-2 rounded overflow-hidden">
+                        <div
+                            className="bg-primary h-full transition-all duration-200"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                )}
+
 
                 {/* Error */}
                 {error && (
