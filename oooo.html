@@ -1,0 +1,1871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Physics Car Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      overflow: hidden;
+      background: #87ceeb;
+      font-family: Arial, sans-serif;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 100;
+    }
+    #threeCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #debugCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container">
+    <canvas id="threeCanvas"></canvas>
+    <canvas id="debugCanvas"></canvas>
+    <div id="info">
+      <div><strong>Controls:</strong></div>
+      <div>W/Arrow Up - Accelerate</div>
+      <div>S/Arrow Down - Brake</div>
+      <div>A/Arrow Left - Lean Back</div>
+      <div>D/Arrow Right - Lean Forward</div>
+      <div>R - Reset car</div>
+      <div>P - Toggle physics debug</div>
+    </div>
+  </div>
+
+  <script>
+    async function initLibraries() {
+      console.log("Starting initialization...");
+
+      // 1. Wait for DOM to be ready
+      if (document.readyState === 'loading') {
+        await new Promise(resolve => {
+          document.addEventListener('DOMContentLoaded', resolve, { once: true });
+        });
+      }
+      console.log("DOM ready");
+
+      // 2. Import THREE.js
+      const THREE = await import("https://esm.sh/three");
+      window.THREE = THREE;
+      console.log("THREE loaded:", THREE);
+
+      // 3. Import and initialize Nape
+      console.log("Initializing Nape...");
+      const { default: initNape } = await import("https://cdn.skypack.dev/@newkrok/nape-js@1.0.0");
+      initNape();
+
+      // 4. Wait a moment for Nape to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      console.log("Nape initialized, window.nape:", window.nape);
+
+      const nape = window.nape;
+
+      if (!nape) {
+        console.error("Nape failed to load!");
+        const infoEl = document.getElementById("info");
+        if (infoEl) {
+          infoEl.innerHTML = '<div style="color: red;">Error: Nape physics engine failed to load</div>';
+        }
+        throw new Error("Nape not loaded");
+      }
+
+      console.log("All libraries loaded successfully!");
+      return { nape, THREE };
+    }
+
+    // ============================================
+    // CONSTANTS
+    // ============================================
+    const PHYSICS = {
+      PIXEL_RATIO: 17,
+      GRAVITY: 350,
+      WIND: 0,
+      TIMESTEP: 1 / 60,
+    };
+
+    const DEFAULT_CAR_CONFIG = {
+      id: "monster_truck_default",
+      name: "Thunder",
+      body: {
+        width: 3,
+        height: 1.5,
+        depth: 2,
+      },
+      frontWheel: {
+        radius: 1.0,
+        offsetX: 2.0,
+        offsetY: -0.8,
+      },
+      rearWheel: {
+        radius: 1.0,
+        offsetX: -2.0,
+        offsetY: -0.8,
+      },
+      physics: {
+        wheelFriction: 1.5,
+        wheelElasticity: 0.3,
+        wheelDensity: 0.5,
+        wheelRollingFriction: 8,
+        accelerationForward: 12,
+        accelerationBackward: 7.2,
+        leanForward: 960,  // Reduced by 40% (1600 * 0.6 = 960)
+        leanBackward: 960, // Reduced by 40% (1600 * 0.6 = 960)
+        jointDamping: 0.4,
+        jointFrequency: 5.0,
+        maxAirborneAngularVelocity: 6,
+      },
+    };
+
+    const DEMO_LEVEL = {
+      terrain: [
+        // First terrain segment (before the gap) - matches LevelData.ts
+        {
+          vertices: [
+            { x: -80, y: 0 },
+            { x: -20, y: 0 },
+            { x: 0, y: 0 },
+            // First hill
+            { x: 20, y: 3 },
+            { x: 40, y: 1 },
+            // Small bump
+            { x: 60, y: 4 },
+            { x: 75, y: 2 },
+            // Jump ramp before bridge
+            { x: 85, y: 1 },
+            { x: 92, y: 4 },
+            { x: 96, y: 5 },
+            // Landing after ramp
+            { x: 102, y: 1 },
+            { x: 110, y: -1 },
+            { x: 115, y: -2 },
+            // Edge of gap (left side)
+            { x: 120, y: -2 },
+            // Bottom of first segment (closed polygon)
+            { x: 120, y: -30 },
+            { x: -80, y: -30 },
+          ],
+        },
+        // Second terrain segment (after the gap) - matches LevelData.ts
+        {
+          vertices: [
+            // Edge of gap (right side)
+            { x: 150, y: -2 },
+            // Climb after gap
+            { x: 155, y: 0 },
+            { x: 170, y: 5 },
+            // Plateau
+            { x: 190, y: 5 },
+            { x: 210, y: 4 },
+            // Final descent
+            { x: 230, y: 1 },
+            { x: 250, y: 0 },
+            { x: 270, y: 0 },
+            // Bottom of second segment (closed polygon)
+            { x: 270, y: -30 },
+            { x: 150, y: -30 },
+          ],
+        },
+      ],
+      // Bridge configuration
+      bridge: {
+        startX: 120,
+        endX: 150,
+        y: -2,
+        plankCount: 12,
+      },
+      // Physics tires (obstacles)
+      tires: [
+        // Start area - single tires (fixed: terrain is around y=1.5-2)
+        { x: 10, y: 2 },
+        { x: 15, y: 2.5 },
+
+        // First hill area - stacked tires
+        { x: 30, y: 4 },
+        { x: 30, y: 6 }, // Stacked on top
+
+        // Before bump - scattered
+        { x: 45, y: 2 },
+        { x: 50, y: 5 },
+        { x: 55, y: 2 },
+
+        // After bump - triple stack
+        { x: 78, y: 3 },
+        { x: 78, y: 5 },
+        { x: 78, y: 7 }, // Triple stack!
+
+        // Before bridge - pair (fixed: terrain is around y=0.5-0.2)
+        { x: 105, y: 1 },
+        { x: 108, y: 0.5 },
+
+        // After bridge - scattered on plateau (fixed: terrain rises from y=-2 to y=5)
+        { x: 160, y: 2 },
+        { x: 165, y: 3 },
+        { x: 175, y: 5.5 },
+        { x: 180, y: 5.5 },
+        { x: 185, y: 5.5 },
+
+        // Plateau area - double stack (fixed: terrain is y=4.5 here)
+        { x: 200, y: 4.5 },
+        { x: 200, y: 6.5 }, // Stacked
+
+        // Final area - scattered (fixed: terrain descends from y=4 to y=0)
+        { x: 220, y: 2.5 },
+        { x: 235, y: 1 },
+        { x: 245, y: 0.5 },
+      ],
+      // Barriers (walls/obstacles)
+      barriers: [
+        { x: -15, y: 2, width: 0.5, height: 6 }, // Start barrier
+      ],
+      // Coins (for future implementation)
+      coins: [
+        { x: 5, y: 2 },
+        { x: 20, y: 5 },
+        { x: 58, y: 6 },
+        { x: 94, y: 7 },
+        { x: 135, y: 3 },
+        { x: 165, y: 5 },
+        { x: 188, y: 7 },
+        { x: 202, y: 7 },
+        { x: 225, y: 4 },
+        { x: 248, y: 1 },
+      ],
+      spawn: { x: -10, y: 5 },
+      finish: { x: 260, y: 2 },
+    };
+
+    // ============================================
+    // NAPE PHYSICS WORLD
+    // ============================================
+    class NapeWorld {
+      constructor() {
+        this.pixelRatio = PHYSICS.PIXEL_RATIO;
+        this.space = new nape.space.Space(
+          new nape.geom.Vec2(PHYSICS.WIND, -PHYSICS.GRAVITY),
+        );
+        this.paused = false;
+      }
+
+      step(dt) {
+        if (!this.paused) {
+          this.space.step(dt);
+        }
+      }
+
+      toWorldPosition(physicsPos) {
+        return {
+          x: physicsPos.x / this.pixelRatio,
+          y: physicsPos.y / this.pixelRatio,
+        };
+      }
+    }
+
+    // ============================================
+    // TERRAIN
+    // ============================================
+    class Terrain {
+      constructor(world, segments, scene) {
+        this.world = world;
+        this.segments = segments;
+        this.scene = scene;
+        this.bodies = [];
+        this.meshes = [];
+        this.createPhysicsBodies();
+        this.createVisualMeshes();
+      }
+
+      createPhysicsBodies() {
+        const pixelRatio = this.world.pixelRatio;
+        const groundMaterial = new nape.phys.Material(0.3, 0.8, 0.8, 1, 0);
+        const terrainFilter = new nape.dynamics.InteractionFilter();
+        terrainFilter.set_collisionGroup(1);
+        terrainFilter.set_collisionMask(-1);
+
+        for (const segment of this.segments) {
+          if (segment.vertices.length < 2) continue;
+
+          for (let i = 0; i < segment.vertices.length - 1; i++) {
+            const v1 = segment.vertices[i];
+            const v2 = segment.vertices[i + 1];
+            if (!v1 || !v2) continue;
+
+            const body = this.createEdgeBody(
+              v1.x * pixelRatio,
+              v1.y * pixelRatio,
+              v2.x * pixelRatio,
+              v2.y * pixelRatio,
+              groundMaterial,
+              terrainFilter,
+            );
+
+            body.set_space(this.world.space);
+            this.bodies.push(body);
+          }
+
+          const firstVertex = segment.vertices[0];
+          const lastVertex = segment.vertices[segment.vertices.length - 1];
+          if (firstVertex && lastVertex && segment.vertices.length > 2) {
+            const closingBody = this.createEdgeBody(
+              lastVertex.x * pixelRatio,
+              lastVertex.y * pixelRatio,
+              firstVertex.x * pixelRatio,
+              firstVertex.y * pixelRatio,
+              groundMaterial,
+              terrainFilter,
+            );
+            closingBody.set_space(this.world.space);
+            this.bodies.push(closingBody);
+          }
+        }
+      }
+
+      createEdgeBody(x1, y1, x2, y2, material, filter) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const centerX = (x1 + x2) / 2;
+        const centerY = (y1 + y2) / 2;
+
+        const body = new nape.phys.Body(nape.phys.BodyType.get_STATIC());
+        const thickness = 4;
+        const edge = new nape.shape.Polygon(
+          nape.shape.Polygon.box(length, thickness),
+        );
+
+        edge.set_material(material);
+        edge.set_filter(filter);
+        body.get_shapes().add(edge);
+        body.set_position(new nape.geom.Vec2(centerX, centerY));
+        body.set_rotation(angle);
+
+        return body;
+      }
+
+      createVisualMeshes() {
+        const terrainDepth = 3; // Same as bridge depth
+
+        for (const segment of this.segments) {
+          if (segment.vertices.length < 3) continue;
+
+          // Create extruded 3D terrain from 2D shape
+          const shape = new THREE.Shape();
+          shape.moveTo(segment.vertices[0].x, segment.vertices[0].y);
+          for (let i = 1; i < segment.vertices.length; i++) {
+            shape.lineTo(segment.vertices[i].x, segment.vertices[i].y);
+          }
+
+          const extrudeSettings = {
+            depth: terrainDepth,
+            bevelEnabled: false,
+          };
+
+          const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+          const material = new THREE.MeshStandardMaterial({
+            color: 0x8b4513,
+            roughness: 0.9,
+            metalness: 0.1,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+
+          // Center the extrusion
+          mesh.position.z = -terrainDepth / 2;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+
+          this.scene.add(mesh);
+          this.meshes.push(mesh);
+        }
+      }
+    }
+
+    // ============================================
+    // PHYSICS DEBUG RENDERER
+    // ============================================
+    class PhysicsDebugRenderer {
+      constructor(world, scene) {
+        this.world = world;
+        this.scene = scene;
+        this.enabled = true; // Enabled by default
+        this.group = new THREE.Group();
+        this.group.name = "PhysicsDebug";
+        this.scene.add(this.group);
+
+        // Material definitions
+        this.lineMaterial = new THREE.LineBasicMaterial({
+          color: 0x00ff00,
+          linewidth: 2,
+          depthTest: false,
+        });
+        this.circleMaterial = new THREE.LineBasicMaterial({
+          color: 0x00ffff,
+          linewidth: 2,
+          depthTest: false,
+        });
+        this.staticMaterial = new THREE.LineBasicMaterial({
+          color: 0xff0000,
+          linewidth: 2,
+          depthTest: false,
+        });
+        this.comMaterial = new THREE.LineBasicMaterial({
+          color: 0xff00ff,
+          linewidth: 3,
+          depthTest: false,
+        });
+        this.originMaterial = new THREE.LineBasicMaterial({
+          color: 0xffff00,
+          linewidth: 3,
+          depthTest: false,
+        });
+        this.jointMaterial = new THREE.LineBasicMaterial({
+          color: 0xff8800,
+          linewidth: 2,
+          depthTest: false,
+        });
+        this.jointAnchorMaterial = new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          linewidth: 3,
+          depthTest: false,
+        });
+      }
+
+      toggle() {
+        this.enabled = !this.enabled;
+        this.group.visible = this.enabled;
+        console.log(`[PhysicsDebug] ${this.enabled ? "Enabled" : "Disabled"}`);
+        if (!this.enabled) {
+          this.clear();
+        }
+      }
+
+      clear() {
+        while (this.group.children.length > 0) {
+          const child = this.group.children[0];
+          this.group.remove(child);
+          if (child.geometry) {
+            child.geometry.dispose();
+          }
+        }
+      }
+
+      update() {
+        if (!this.enabled) return;
+
+        this.clear();
+
+        const pixelRatio = this.world.pixelRatio;
+        const space = this.world.space;
+
+        // Iterate through all bodies
+        const bodies = space.get_bodies();
+        const bodyIterator = bodies.iterator();
+
+        while (bodyIterator.hasNext()) {
+          const body = bodyIterator.next();
+          const bodyPos = body.get_position();
+          const bodyRotation = body.get_rotation();
+          const isStatic =
+            body.get_type() === nape.phys.BodyType.get_STATIC();
+
+          // Get all shapes from this body
+          const shapes = body.get_shapes();
+          const shapeIterator = shapes.iterator();
+
+          while (shapeIterator.hasNext()) {
+            const shape = shapeIterator.next();
+
+            if (shape.isCircle()) {
+              this.drawCircle(
+                bodyPos.get_x() / pixelRatio,
+                bodyPos.get_y() / pixelRatio,
+                shape.get_radius() / pixelRatio,
+                bodyRotation,
+                isStatic,
+              );
+            } else if (shape.isPolygon()) {
+              this.drawPolygon(shape, pixelRatio, isStatic);
+            }
+          }
+
+          // Draw center of mass and body origin for dynamic bodies
+          if (!isStatic) {
+            const worldCOM = body.get_worldCOM();
+            this.drawCrossMarker(
+              bodyPos.get_x() / pixelRatio,
+              bodyPos.get_y() / pixelRatio,
+              0.3,
+              this.originMaterial,
+              "origin",
+            );
+            this.drawCrossMarker(
+              worldCOM.get_x() / pixelRatio,
+              worldCOM.get_y() / pixelRatio,
+              0.5,
+              this.comMaterial,
+              "com",
+            );
+          }
+        }
+
+        // Draw all constraints (joints)
+        this.drawConstraints(pixelRatio);
+      }
+
+      drawConstraints(pixelRatio) {
+        const space = this.world.space;
+        const constraints = space.get_constraints();
+        const constraintIterator = constraints.iterator();
+
+        while (constraintIterator.hasNext()) {
+          const constraint = constraintIterator.next();
+
+          if (
+            constraint.get_body1 &&
+            constraint.get_body2 &&
+            constraint.get_anchor1 &&
+            constraint.get_anchor2
+          ) {
+            const body1 = constraint.get_body1();
+            const body2 = constraint.get_body2();
+            const anchor1 = constraint.get_anchor1();
+            const anchor2 = constraint.get_anchor2();
+
+            if (body1 && body2) {
+              const body1Pos = body1.get_position();
+              const body1Rot = body1.get_rotation();
+              const body2Pos = body2.get_position();
+              const body2Rot = body2.get_rotation();
+
+              // Transform anchor1 from body1 local to world coordinates
+              const cos1 = Math.cos(body1Rot);
+              const sin1 = Math.sin(body1Rot);
+              const world1X =
+                body1Pos.get_x() +
+                (anchor1.get_x() * cos1 - anchor1.get_y() * sin1);
+              const world1Y =
+                body1Pos.get_y() +
+                (anchor1.get_x() * sin1 + anchor1.get_y() * cos1);
+
+              // Transform anchor2 from body2 local to world coordinates
+              const cos2 = Math.cos(body2Rot);
+              const sin2 = Math.sin(body2Rot);
+              const world2X =
+                body2Pos.get_x() +
+                (anchor2.get_x() * cos2 - anchor2.get_y() * sin2);
+              const world2Y =
+                body2Pos.get_y() +
+                (anchor2.get_x() * sin2 + anchor2.get_y() * cos2);
+
+              // Draw lines from bodies to anchor points
+              this.drawJointLine(
+                body1Pos.get_x() / pixelRatio,
+                body1Pos.get_y() / pixelRatio,
+                world1X / pixelRatio,
+                world1Y / pixelRatio,
+              );
+              this.drawJointLine(
+                body2Pos.get_x() / pixelRatio,
+                body2Pos.get_y() / pixelRatio,
+                world2X / pixelRatio,
+                world2Y / pixelRatio,
+              );
+
+              // Draw anchor point markers
+              this.drawAnchorMarker(
+                world1X / pixelRatio,
+                world1Y / pixelRatio,
+              );
+              this.drawAnchorMarker(
+                world2X / pixelRatio,
+                world2Y / pixelRatio,
+              );
+            }
+          }
+        }
+      }
+
+      drawJointLine(x1, y1, x2, y2) {
+        const points = [
+          new THREE.Vector3(x1, y1, 0.12),
+          new THREE.Vector3(x2, y2, 0.12),
+        ];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, this.jointMaterial);
+        line.renderOrder = 998;
+        this.group.add(line);
+      }
+
+      drawAnchorMarker(x, y) {
+        const size = 0.15;
+        const points = [
+          new THREE.Vector3(x, y - size, 0.13),
+          new THREE.Vector3(x + size, y, 0.13),
+          new THREE.Vector3(x, y + size, 0.13),
+          new THREE.Vector3(x - size, y, 0.13),
+          new THREE.Vector3(x, y - size, 0.13),
+        ];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const diamond = new THREE.Line(geometry, this.jointAnchorMaterial);
+        diamond.renderOrder = 1001;
+        this.group.add(diamond);
+      }
+
+      drawCircle(x, y, radius, rotation, isStatic) {
+        const segments = 32;
+        const points = [];
+
+        for (let i = 0; i <= segments; i++) {
+          const angle = (i / segments) * Math.PI * 2;
+          points.push(
+            new THREE.Vector3(
+              x + Math.cos(angle) * radius,
+              y + Math.sin(angle) * radius,
+              0.1,
+            ),
+          );
+        }
+
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = isStatic
+          ? this.staticMaterial
+          : this.circleMaterial;
+        const circle = new THREE.Line(geometry, material);
+        circle.renderOrder = 999;
+        this.group.add(circle);
+
+        // Draw a line from center to edge to show rotation
+        const linePoints = [
+          new THREE.Vector3(x, y, 0.1),
+          new THREE.Vector3(
+            x + Math.cos(rotation) * radius,
+            y + Math.sin(rotation) * radius,
+            0.1,
+          ),
+        ];
+        const lineGeometry =
+          new THREE.BufferGeometry().setFromPoints(linePoints);
+        const line = new THREE.Line(lineGeometry, material);
+        line.renderOrder = 999;
+        this.group.add(line);
+      }
+
+      drawPolygon(shape, pixelRatio, isStatic) {
+        const points = [];
+
+        const body = shape.get_body();
+        const bodyPos = body.get_position();
+        const bodyRotation = body.get_rotation();
+        const cos = Math.cos(bodyRotation);
+        const sin = Math.sin(bodyRotation);
+
+        const localVerts = shape.get_localVerts();
+        const vertIterator = localVerts.iterator();
+
+        while (vertIterator.hasNext()) {
+          const vert = vertIterator.next();
+          const localX = vert.get_x();
+          const localY = vert.get_y();
+
+          // Transform local to world coordinates
+          const worldX = bodyPos.get_x() + (localX * cos - localY * sin);
+          const worldY = bodyPos.get_y() + (localX * sin + localY * cos);
+
+          points.push(
+            new THREE.Vector3(worldX / pixelRatio, worldY / pixelRatio, 0.1),
+          );
+        }
+
+        // Close the polygon
+        if (points.length > 0 && points[0]) {
+          points.push(points[0].clone());
+        }
+
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = isStatic ? this.staticMaterial : this.lineMaterial;
+        const polygon = new THREE.Line(geometry, material);
+        polygon.renderOrder = 999;
+        this.group.add(polygon);
+      }
+
+      drawCrossMarker(x, y, size, material, type) {
+        const halfSize = size / 2;
+
+        if (type === "com") {
+          // COM: X shape
+          const points1 = [
+            new THREE.Vector3(x - halfSize, y - halfSize, 0.15),
+            new THREE.Vector3(x + halfSize, y + halfSize, 0.15),
+          ];
+          const points2 = [
+            new THREE.Vector3(x - halfSize, y + halfSize, 0.15),
+            new THREE.Vector3(x + halfSize, y - halfSize, 0.15),
+          ];
+
+          const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+          const line1 = new THREE.Line(geometry1, material);
+          line1.renderOrder = 1000;
+          this.group.add(line1);
+
+          const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+          const line2 = new THREE.Line(geometry2, material);
+          line2.renderOrder = 1000;
+          this.group.add(line2);
+        } else {
+          // Origin: + shape
+          const points1 = [
+            new THREE.Vector3(x - halfSize, y, 0.15),
+            new THREE.Vector3(x + halfSize, y, 0.15),
+          ];
+          const points2 = [
+            new THREE.Vector3(x, y - halfSize, 0.15),
+            new THREE.Vector3(x, y + halfSize, 0.15),
+          ];
+
+          const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+          const line1 = new THREE.Line(geometry1, material);
+          line1.renderOrder = 1000;
+          this.group.add(line1);
+
+          const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+          const line2 = new THREE.Line(geometry2, material);
+          line2.renderOrder = 1000;
+          this.group.add(line2);
+        }
+      }
+    }
+
+    // ============================================
+    // PHYSICS TIRE (obstacle)
+    // ============================================
+    class PhysicsTire {
+      constructor(world, position, scene) {
+        this.world = world;
+        this.position = position;
+        this.scene = scene;
+        this.width = 1.8; // Standing tire width
+        this.height = 1.8; // Standing tire height
+        this.depth = 0.5; // Tire thickness
+
+        this.createPhysicsBody();
+        this.createVisualMesh();
+      }
+
+      createPhysicsBody() {
+        const pixelRatio = this.world.pixelRatio;
+
+        // Create tire material - some bounce and good friction for stacking
+        const tireMaterial = new nape.phys.Material(
+          0.3, // elasticity - less bouncy for better stacking
+          0.9, // dynamicFriction - high friction
+          0.95, // staticFriction - very high for stable stacking
+          3.0, // density - heavier for stability
+          0.5, // rollingFriction
+        );
+
+        // Set collision filter - group 4 for interactive objects
+        const tireFilter = new nape.dynamics.InteractionFilter();
+        tireFilter.set_collisionGroup(4); // New group for interactive objects
+        tireFilter.set_collisionMask(-1); // Collide with everything
+
+        // Create DYNAMIC body (can move)
+        this.body = new nape.phys.Body(nape.phys.BodyType.get_DYNAMIC());
+
+        // Create a box shape for the upright tire
+        const box = new nape.shape.Polygon(
+          nape.shape.Polygon.box(
+            this.width * pixelRatio,
+            this.height * pixelRatio,
+          ),
+        );
+        box.set_material(tireMaterial);
+        box.set_filter(tireFilter);
+        this.body.get_shapes().add(box);
+
+        // Position the body
+        this.body.set_position(
+          new nape.geom.Vec2(
+            this.position.x * pixelRatio,
+            this.position.y * pixelRatio,
+          ),
+        );
+
+        this.body.set_space(this.world.space);
+      }
+
+      createVisualMesh() {
+        // Create a simple box geometry for the tire
+        const geometry = new THREE.BoxGeometry(
+          this.width,
+          this.height,
+          this.depth,
+        );
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x222222, // Dark rubber color
+          roughness: 0.9,
+          metalness: 0.1,
+        });
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.castShadow = true;
+        this.mesh.receiveShadow = true;
+        this.scene.add(this.mesh);
+      }
+
+      update() {
+        const pixelRatio = this.world.pixelRatio;
+        const position = this.body.get_position();
+        const rotation = this.body.get_rotation();
+
+        // Update mesh position (convert from physics to world coords)
+        this.mesh.position.set(
+          position.get_x() / pixelRatio,
+          position.get_y() / pixelRatio,
+          0,
+        );
+
+        // The tire stands upright (like a wall), rotation is around Z axis
+        this.mesh.rotation.z = rotation;
+      }
+
+      reset() {
+        const pixelRatio = this.world.pixelRatio;
+
+        // Reset position
+        this.body.set_position(
+          new nape.geom.Vec2(
+            this.position.x * pixelRatio,
+            this.position.y * pixelRatio,
+          ),
+        );
+
+        // Reset rotation
+        this.body.set_rotation(0);
+
+        // Reset velocities
+        this.body.set_velocity(new nape.geom.Vec2(0, 0));
+        this.body.set_angularVel(0);
+
+        // Update mesh immediately
+        this.update();
+      }
+    }
+
+    // ============================================
+    // BARRIER (static wall obstacle)
+    // ============================================
+    class Barrier {
+      constructor(world, config, scene) {
+        this.world = world;
+        this.config = config;
+        this.scene = scene;
+        this.depth = 3; // Match terrain depth
+
+        if (config.width > 0 && config.height > 0) {
+          this.createPhysicsBody();
+          this.createVisualMesh();
+        }
+      }
+
+      createPhysicsBody() {
+        const pixelRatio = this.world.pixelRatio;
+
+        // Create barrier material - high friction, no bounce
+        const barrierMaterial = new nape.phys.Material(0.5, 1.0, 0.5, 1, 0);
+
+        // Set collision filter - group 1 for terrain/barriers
+        const barrierFilter = new nape.dynamics.InteractionFilter();
+        barrierFilter.set_collisionGroup(1);
+        barrierFilter.set_collisionMask(-1); // Collide with everything
+
+        // Create static body
+        this.body = new nape.phys.Body(nape.phys.BodyType.get_STATIC());
+
+        // Create a box shape for the barrier
+        const box = new nape.shape.Polygon(
+          nape.shape.Polygon.box(
+            this.config.width * pixelRatio,
+            this.config.height * pixelRatio,
+          ),
+        );
+
+        box.set_material(barrierMaterial);
+        box.set_filter(barrierFilter);
+        this.body.get_shapes().add(box);
+
+        // Position the body
+        this.body.set_position(
+          new nape.geom.Vec2(
+            this.config.x * pixelRatio,
+            this.config.y * pixelRatio,
+          ),
+        );
+
+        this.body.set_space(this.world.space);
+      }
+
+      createVisualMesh() {
+        const geometry = new THREE.BoxGeometry(
+          this.config.width,
+          this.config.height,
+          this.depth,
+        );
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x666666, // Gray concrete/metal color
+          roughness: 0.8,
+          metalness: 0.2,
+        });
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.castShadow = true;
+        this.mesh.receiveShadow = true;
+        this.mesh.position.set(this.config.x, this.config.y, 0);
+        this.scene.add(this.mesh);
+      }
+    }
+
+    // ============================================
+    // BRIDGE
+    // ============================================
+    class Bridge {
+      constructor(world, config, scene) {
+        this.world = world;
+        this.config = config;
+        this.scene = scene;
+        this.planks = [];
+        this.joints = [];
+        this.anchorBodies = [];
+
+        // Calculate plank dimensions
+        const bridgeLength = config.endX - config.startX;
+        this.gap = 0.1;
+        this.plankWidth =
+          (bridgeLength - (config.plankCount - 1) * this.gap) /
+          config.plankCount;
+        this.plankHeight = 0.4;
+        this.plankDepth = 3;
+
+        this.createBridge();
+      }
+
+      createBridge() {
+        const pixelRatio = this.world.pixelRatio;
+
+        // Material for planks - wood-like
+        const plankMaterial = new nape.phys.Material(
+          0.2, // elasticity
+          0.9, // dynamic friction
+          0.9, // static friction
+          2.0, // density
+          0, // rolling friction
+        );
+
+        // Collision filter - same as terrain (group 1)
+        const bridgeFilter = new nape.dynamics.InteractionFilter();
+        bridgeFilter.set_collisionGroup(1);
+        bridgeFilter.set_collisionMask(-1); // Collide with everything
+
+        // Create static anchor bodies at both ends
+        const leftAnchor = new nape.phys.Body(
+          nape.phys.BodyType.get_STATIC(),
+        );
+        leftAnchor.set_position(
+          new nape.geom.Vec2(
+            this.config.startX * pixelRatio,
+            this.config.y * pixelRatio,
+          ),
+        );
+        leftAnchor.set_space(this.world.space);
+        this.anchorBodies.push(leftAnchor);
+
+        const rightAnchor = new nape.phys.Body(
+          nape.phys.BodyType.get_STATIC(),
+        );
+        rightAnchor.set_position(
+          new nape.geom.Vec2(
+            this.config.endX * pixelRatio,
+            this.config.y * pixelRatio,
+          ),
+        );
+        rightAnchor.set_space(this.world.space);
+        this.anchorBodies.push(rightAnchor);
+
+        // Create planks
+        for (let i = 0; i < this.config.plankCount; i++) {
+          const plankX =
+            this.config.startX + (i + 0.5) * (this.plankWidth + this.gap);
+          const plankY = this.config.y;
+
+          // Create physics body
+          const body = new nape.phys.Body(nape.phys.BodyType.get_DYNAMIC());
+          const shape = new nape.shape.Polygon(
+            nape.shape.Polygon.box(
+              this.plankWidth * pixelRatio,
+              this.plankHeight * pixelRatio,
+            ),
+          );
+          shape.set_material(plankMaterial);
+          shape.set_filter(bridgeFilter);
+          body.get_shapes().add(shape);
+          body.set_position(
+            new nape.geom.Vec2(plankX * pixelRatio, plankY * pixelRatio),
+          );
+          body.set_space(this.world.space);
+
+          // Create visual mesh
+          const geometry = new THREE.BoxGeometry(
+            this.plankWidth,
+            this.plankHeight,
+            this.plankDepth,
+          );
+          const material = new THREE.MeshStandardMaterial({
+            color: 0x8b4513, // Brown wood color
+            roughness: 0.8,
+            metalness: 0.1,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.position.set(plankX, plankY, 0);
+          this.scene.add(mesh);
+
+          this.planks.push({ body, mesh });
+        }
+
+        // Create joints between planks
+        this.createJoints(leftAnchor, rightAnchor, pixelRatio);
+      }
+
+      createJoints(leftAnchor, rightAnchor, pixelRatio) {
+        // Joint settings - stiffer bridge with less swinging
+        const jointFrequency = 20; // Higher = stiffer
+        const jointDamping = 0.9; // Higher = less oscillation
+
+        // Connect first plank to left anchor
+        if (this.planks.length > 0) {
+          const firstPlank = this.planks[0];
+          const joint = new nape.constraint.PivotJoint(
+            leftAnchor,
+            firstPlank.body,
+            new nape.geom.Vec2(0, 0),
+            new nape.geom.Vec2((-this.plankWidth * pixelRatio) / 2, 0),
+          );
+          joint.set_stiff(false);
+          joint.set_frequency(jointFrequency);
+          joint.set_damping(jointDamping);
+          joint.set_space(this.world.space);
+          this.joints.push(joint);
+        }
+
+        // Connect planks to each other
+        for (let i = 0; i < this.planks.length - 1; i++) {
+          const currentPlank = this.planks[i];
+          const nextPlank = this.planks[i + 1];
+
+          const joint = new nape.constraint.PivotJoint(
+            currentPlank.body,
+            nextPlank.body,
+            new nape.geom.Vec2((this.plankWidth * pixelRatio) / 2, 0),
+            new nape.geom.Vec2((-this.plankWidth * pixelRatio) / 2, 0),
+          );
+          joint.set_stiff(false);
+          joint.set_frequency(jointFrequency);
+          joint.set_damping(jointDamping);
+          joint.set_space(this.world.space);
+          this.joints.push(joint);
+        }
+
+        // Connect last plank to right anchor
+        if (this.planks.length > 0) {
+          const lastPlank = this.planks[this.planks.length - 1];
+          const joint = new nape.constraint.PivotJoint(
+            lastPlank.body,
+            rightAnchor,
+            new nape.geom.Vec2((this.plankWidth * pixelRatio) / 2, 0),
+            new nape.geom.Vec2(0, 0),
+          );
+          joint.set_stiff(false);
+          joint.set_frequency(jointFrequency);
+          joint.set_damping(jointDamping);
+          joint.set_space(this.world.space);
+          this.joints.push(joint);
+        }
+      }
+
+      update() {
+        const pixelRatio = this.world.pixelRatio;
+
+        // Sync mesh positions with physics bodies
+        for (const plank of this.planks) {
+          const pos = plank.body.get_position();
+          plank.mesh.position.set(
+            pos.get_x() / pixelRatio,
+            pos.get_y() / pixelRatio,
+            0,
+          );
+          plank.mesh.rotation.z = plank.body.get_rotation();
+        }
+      }
+
+      reset() {
+        const pixelRatio = this.world.pixelRatio;
+
+        for (let i = 0; i < this.planks.length; i++) {
+          const plank = this.planks[i];
+          const plankX =
+            this.config.startX + (i + 0.5) * (this.plankWidth + this.gap);
+          const plankY = this.config.y;
+
+          // Reset position
+          plank.body.set_position(
+            new nape.geom.Vec2(plankX * pixelRatio, plankY * pixelRatio),
+          );
+          // Reset rotation
+          plank.body.set_rotation(0);
+          // Reset velocities
+          plank.body.set_velocity(new nape.geom.Vec2(0, 0));
+          plank.body.set_angularVel(0);
+        }
+
+        // Update meshes immediately
+        this.update();
+      }
+    }
+
+    // ============================================
+    // CAR PHYSICS
+    // ============================================
+    class CarPhysics {
+      constructor(world, spawnPosition, config) {
+        this.world = world;
+        this.config = config;
+        this.createPhysicsBodies(spawnPosition);
+        this.createJoints();
+      }
+
+      createPhysicsBodies(spawnPosition) {
+        const pixelRatio = this.world.pixelRatio;
+        const {
+          body: bodyConfig,
+          frontWheel: fwConfig,
+          rearWheel: rwConfig,
+          physics,
+        } = this.config;
+
+        // Create car body
+        this.body = new nape.phys.Body(nape.phys.BodyType.get_DYNAMIC());
+        const halfWidth = (bodyConfig.width * pixelRatio) / 2;
+        const halfHeight = (bodyConfig.height * pixelRatio) / 2;
+
+        // Offset the body vertices DOWN so rotation center is at wheel level
+        // The pivot point (0,0) will be at the bottom of the body (wheel axle height)
+        const yOffset = halfHeight; // Shift entire body UP relative to origin
+
+        const vertices = [
+          new nape.geom.Vec2(-halfWidth, -halfHeight + yOffset),
+          new nape.geom.Vec2(halfWidth, -halfHeight + yOffset),
+          new nape.geom.Vec2(halfWidth, halfHeight + yOffset),
+          new nape.geom.Vec2(-halfWidth, halfHeight + yOffset),
+        ];
+
+        const bodyShape = new nape.shape.Polygon(vertices);
+        const bodyMaterial = new nape.phys.Material(0.2, 0.3, 0.3, 2, 0);
+        bodyShape.set_material(bodyMaterial);
+
+        const bodyFilter = new nape.dynamics.InteractionFilter();
+        bodyFilter.set_collisionGroup(2);
+        bodyFilter.set_collisionMask(~2);
+        bodyShape.set_filter(bodyFilter);
+
+        this.body.get_shapes().add(bodyShape);
+        this.body.set_position(
+          new nape.geom.Vec2(
+            spawnPosition.x * pixelRatio,
+            spawnPosition.y * pixelRatio,
+          ),
+        );
+        this.body.set_space(this.world.space);
+
+        // Wheel material
+        const wheelMaterial = new nape.phys.Material(
+          physics.wheelElasticity,
+          physics.wheelFriction,
+          physics.wheelFriction,
+          physics.wheelDensity,
+          physics.wheelRollingFriction,
+        );
+
+        const wheelFilter = new nape.dynamics.InteractionFilter();
+        wheelFilter.set_collisionGroup(2);
+        wheelFilter.set_collisionMask(~2);
+
+        // Front wheel
+        this.frontWheel = new nape.phys.Body(
+          nape.phys.BodyType.get_DYNAMIC(),
+        );
+        const frontWheelShape = new nape.shape.Circle(
+          fwConfig.radius * pixelRatio,
+        );
+        frontWheelShape.set_material(wheelMaterial);
+        frontWheelShape.set_filter(wheelFilter);
+        this.frontWheel.get_shapes().add(frontWheelShape);
+        this.frontWheel.set_position(
+          new nape.geom.Vec2(
+            (spawnPosition.x + fwConfig.offsetX) * pixelRatio,
+            (spawnPosition.y + fwConfig.offsetY) * pixelRatio,
+          ),
+        );
+        this.frontWheel.set_space(this.world.space);
+
+        // Rear wheel
+        this.rearWheel = new nape.phys.Body(nape.phys.BodyType.get_DYNAMIC());
+        const rearWheelShape = new nape.shape.Circle(
+          rwConfig.radius * pixelRatio,
+        );
+        rearWheelShape.set_material(wheelMaterial);
+        rearWheelShape.set_filter(wheelFilter);
+        this.rearWheel.get_shapes().add(rearWheelShape);
+        this.rearWheel.set_position(
+          new nape.geom.Vec2(
+            (spawnPosition.x + rwConfig.offsetX) * pixelRatio,
+            (spawnPosition.y + rwConfig.offsetY) * pixelRatio,
+          ),
+        );
+        this.rearWheel.set_space(this.world.space);
+      }
+
+      createJoints() {
+        const pixelRatio = this.world.pixelRatio;
+        const {
+          body: bodyConfig,
+          frontWheel: fwConfig,
+          rearWheel: rwConfig,
+          physics,
+        } = this.config;
+
+        // Since we offset the body shape UP, the anchor points need to be adjusted
+        const halfHeight = (bodyConfig.height * pixelRatio) / 2;
+        const yOffset = halfHeight; // Same offset as in body vertices
+
+        this.frontJoint = new nape.constraint.PivotJoint(
+          this.body,
+          this.frontWheel,
+          new nape.geom.Vec2(
+            fwConfig.offsetX * pixelRatio,
+            fwConfig.offsetY * pixelRatio + yOffset,
+          ),
+          new nape.geom.Vec2(0, 0),
+        );
+        this.frontJoint.set_stiff(false);
+        this.frontJoint.set_damping(physics.jointDamping);
+        this.frontJoint.set_frequency(physics.jointFrequency);
+        this.frontJoint.set_space(this.world.space);
+
+        this.rearJoint = new nape.constraint.PivotJoint(
+          this.body,
+          this.rearWheel,
+          new nape.geom.Vec2(
+            rwConfig.offsetX * pixelRatio,
+            rwConfig.offsetY * pixelRatio + yOffset,
+          ),
+          new nape.geom.Vec2(0, 0),
+        );
+        this.rearJoint.set_stiff(false);
+        this.rearJoint.set_damping(physics.jointDamping);
+        this.rearJoint.set_frequency(physics.jointFrequency);
+        this.rearJoint.set_space(this.world.space);
+      }
+
+      accelerate(direction, multiplier = 1.0) {
+        const { physics } = this.config;
+        if (direction > 0) {
+          const targetVel = -physics.accelerationForward * multiplier;
+          this.rearWheel.set_angularVel(
+            Math.min(targetVel, this.rearWheel.get_angularVel()),
+          );
+          this.frontWheel.set_angularVel(
+            Math.min(targetVel, this.frontWheel.get_angularVel()),
+          );
+        } else if (direction < 0) {
+          const targetVel = physics.accelerationBackward * multiplier;
+          this.rearWheel.set_angularVel(
+            Math.max(targetVel, this.rearWheel.get_angularVel()),
+          );
+          this.frontWheel.set_angularVel(
+            Math.max(targetVel, this.frontWheel.get_angularVel()),
+          );
+        }
+      }
+
+      lean(direction) {
+        const { physics } = this.config;
+        const frontGrounded = this.frontWheel.get_arbiters().get_length() > 0;
+        const rearGrounded = this.rearWheel.get_arbiters().get_length() > 0;
+        const isAirborne = !frontGrounded && !rearGrounded;
+        const airborneMultiplier = isAirborne ? 0.6 : 1.0;
+
+        if (isAirborne) {
+          const currentAngularVel = this.body.get_angularVel();
+          const maxAngularVel = physics.maxAirborneAngularVelocity;
+          if (direction > 0 && currentAngularVel <= -maxAngularVel) return;
+          if (direction < 0 && currentAngularVel >= maxAngularVel) return;
+        }
+
+        if (direction > 0) {
+          this.body.applyAngularImpulse(
+            -physics.leanForward * airborneMultiplier,
+          );
+        } else if (direction < 0) {
+          this.body.applyAngularImpulse(
+            physics.leanBackward * airborneMultiplier,
+          );
+        }
+      }
+
+      getPosition() {
+        const pos = this.body.get_position();
+        return this.world.toWorldPosition({ x: pos.get_x(), y: pos.get_y() });
+      }
+
+      getRotation() {
+        return this.body.get_rotation();
+      }
+
+      getFrontWheelPosition() {
+        const pos = this.frontWheel.get_position();
+        return this.world.toWorldPosition({ x: pos.get_x(), y: pos.get_y() });
+      }
+
+      getRearWheelPosition() {
+        const pos = this.rearWheel.get_position();
+        return this.world.toWorldPosition({ x: pos.get_x(), y: pos.get_y() });
+      }
+
+      getFrontWheelRotation() {
+        return this.frontWheel.get_rotation();
+      }
+
+      getRearWheelRotation() {
+        return this.rearWheel.get_rotation();
+      }
+
+      reset(position) {
+        const pixelRatio = this.world.pixelRatio;
+        const { frontWheel: fwConfig, rearWheel: rwConfig } = this.config;
+
+        this.body.set_position(
+          new nape.geom.Vec2(
+            position.x * pixelRatio,
+            position.y * pixelRatio,
+          ),
+        );
+        this.body.set_rotation(0);
+        this.body.set_velocity(new nape.geom.Vec2(0, 0));
+        this.body.set_angularVel(0);
+
+        this.frontWheel.set_position(
+          new nape.geom.Vec2(
+            (position.x + fwConfig.offsetX) * pixelRatio,
+            (position.y + fwConfig.offsetY) * pixelRatio,
+          ),
+        );
+        this.frontWheel.set_rotation(0);
+        this.frontWheel.set_velocity(new nape.geom.Vec2(0, 0));
+        this.frontWheel.set_angularVel(0);
+
+        this.rearWheel.set_position(
+          new nape.geom.Vec2(
+            (position.x + rwConfig.offsetX) * pixelRatio,
+            (position.y + rwConfig.offsetY) * pixelRatio,
+          ),
+        );
+        this.rearWheel.set_rotation(0);
+        this.rearWheel.set_velocity(new nape.geom.Vec2(0, 0));
+        this.rearWheel.set_angularVel(0);
+      }
+    }
+
+    // ============================================
+    // INPUT MANAGER
+    // ============================================
+    class InputManager {
+      constructor() {
+        this.keys = {};
+        window.addEventListener("keydown", (e) => {
+          this.keys[e.key] = true;
+        });
+        window.addEventListener("keyup", (e) => {
+          this.keys[e.key] = false;
+        });
+      }
+
+      isKeyPressed(key) {
+        return this.keys[key] || false;
+      }
+
+      // Support both WASD and Arrow keys
+      isAcceleratePressed() {
+        return (
+          this.isKeyPressed("ArrowUp") ||
+          this.isKeyPressed("w") ||
+          this.isKeyPressed("W")
+        );
+      }
+
+      isBrakePressed() {
+        return (
+          this.isKeyPressed("ArrowDown") ||
+          this.isKeyPressed("s") ||
+          this.isKeyPressed("S")
+        );
+      }
+
+      isLeanBackPressed() {
+        return (
+          this.isKeyPressed("ArrowLeft") ||
+          this.isKeyPressed("a") ||
+          this.isKeyPressed("A")
+        );
+      }
+
+      isLeanForwardPressed() {
+        return (
+          this.isKeyPressed("ArrowRight") ||
+          this.isKeyPressed("d") ||
+          this.isKeyPressed("D")
+        );
+      }
+
+      isResetPressed() {
+        return this.isKeyPressed("r") || this.isKeyPressed("R");
+      }
+
+      isDebugTogglePressed() {
+        return this.isKeyPressed("p") || this.isKeyPressed("P");
+      }
+    }
+
+    // ============================================
+    // THREE.JS RENDERER
+    // ============================================
+    class ThreeRenderer {
+      constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x87ceeb);
+
+        this.camera = new THREE.PerspectiveCamera(
+          75,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          1000,
+        );
+        this.camera.position.set(0, 5, 20);
+
+        this.renderer = new THREE.WebGLRenderer({
+          canvas: this.canvas,
+          antialias: true,
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 10);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.camera.left = -50;
+        directionalLight.shadow.camera.right = 50;
+        directionalLight.shadow.camera.top = 50;
+        directionalLight.shadow.camera.bottom = -50;
+        this.scene.add(directionalLight);
+
+        // Meshes
+        this.carMesh = null;
+        this.frontWheelMesh = null;
+        this.rearWheelMesh = null;
+        this.terrainMeshes = [];
+
+        window.addEventListener("resize", () => this.onWindowResize());
+      }
+
+      onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      createCarMeshes(config) {
+        const { body, frontWheel, rearWheel } = config;
+
+        // Car body
+        const bodyGeometry = new THREE.BoxGeometry(
+          body.width,
+          body.height,
+          body.depth,
+        );
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+          color: 0xff6600,
+        });
+        this.carMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        this.carMesh.castShadow = true;
+        this.scene.add(this.carMesh);
+
+        // Front wheel - Create cylinder facing the side-scroller direction
+        const frontWheelGeometry = new THREE.CylinderGeometry(
+          frontWheel.radius,
+          frontWheel.radius,
+          0.5,
+          16,
+        );
+        const wheelMaterial = new THREE.MeshStandardMaterial({
+          color: 0x333333,
+        });
+        this.frontWheelMesh = new THREE.Mesh(
+          frontWheelGeometry,
+          wheelMaterial,
+        );
+        // Rotate cylinder to lay flat (X-axis rotation)
+        this.frontWheelMesh.rotation.set(Math.PI / 2, 0, 0);
+        this.frontWheelMesh.castShadow = true;
+        this.scene.add(this.frontWheelMesh);
+
+        // Rear wheel
+        const rearWheelGeometry = new THREE.CylinderGeometry(
+          rearWheel.radius,
+          rearWheel.radius,
+          0.5,
+          16,
+        );
+        this.rearWheelMesh = new THREE.Mesh(rearWheelGeometry, wheelMaterial);
+        // Rotate cylinder to lay flat (X-axis rotation)
+        this.rearWheelMesh.rotation.set(Math.PI / 2, 0, 0);
+        this.rearWheelMesh.castShadow = true;
+        this.scene.add(this.rearWheelMesh);
+      }
+
+      // Terrain meshes are now created by Terrain class itself
+      // This method is no longer needed but kept for compatibility
+      createTerrainMeshes(segments) {
+        // Terrain now handles its own 3D mesh creation
+        console.log("Terrain meshes created by Terrain class");
+      }
+
+      updateCarPosition(carPhysics) {
+        const carPos = carPhysics.getPosition();
+        const carRot = carPhysics.getRotation();
+
+        // Offset the visual mesh UP to match the physics body offset
+        // This offset must be ROTATED with the body rotation
+        const bodyHeight = carPhysics.config.body.height;
+        const offsetMagnitude = bodyHeight / 2; // Half body height
+
+        // Apply rotated offset (rotate the UP vector by body rotation)
+        const offsetX = -Math.sin(carRot) * offsetMagnitude;
+        const offsetY = Math.cos(carRot) * offsetMagnitude;
+
+        this.carMesh.position.set(carPos.x + offsetX, carPos.y + offsetY, 0);
+        this.carMesh.rotation.z = carRot;
+
+        // Front wheel update
+        const frontWheelPos = carPhysics.getFrontWheelPosition();
+        const frontWheelRot = carPhysics.getFrontWheelRotation();
+        this.frontWheelMesh.position.set(frontWheelPos.x, frontWheelPos.y, 0);
+
+        // Apply wheel rotation using quaternions
+        // Rotate cylinder to horizontal, then apply physics rotation
+        const qX_front = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(1, 0, 0),
+          Math.PI / 2,
+        );
+        const qSpin_front = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          frontWheelRot, // Physics rotation around Y-axis (cylinder's axis after X rotation)
+        );
+        this.frontWheelMesh.quaternion.copy(qX_front).multiply(qSpin_front);
+
+        // Rear wheel update
+        const rearWheelPos = carPhysics.getRearWheelPosition();
+        const rearWheelRot = carPhysics.getRearWheelRotation();
+        this.rearWheelMesh.position.set(rearWheelPos.x, rearWheelPos.y, 0);
+
+        const qX_rear = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(1, 0, 0),
+          Math.PI / 2,
+        );
+        const qSpin_rear = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          rearWheelRot, // Physics rotation around Y-axis
+        );
+        this.rearWheelMesh.quaternion.copy(qX_rear).multiply(qSpin_rear);
+
+        // Camera follow
+        this.camera.position.x = carPos.x;
+        this.camera.position.y = carPos.y + 5;
+      }
+
+      render() {
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    // ============================================
+    // DEBUG RENDERER
+    // ============================================
+    class DebugRenderer {
+      constructor(canvasId, world) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext("2d");
+        this.world = world;
+        this.cameraX = 0;
+        this.cameraY = 0;
+        this.resize();
+        window.addEventListener("resize", () => this.resize());
+      }
+
+      resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+      }
+
+      clear() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+
+      setCamera(x, y) {
+        this.cameraX = x;
+        this.cameraY = y;
+      }
+
+      render() {
+        this.clear();
+
+        // Debug rendering disabled - Nape.js CDN version has different debug API
+        // The Three.js renderer provides visual feedback instead
+
+        // Optionally draw a simple representation
+        this.ctx.save();
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+        this.ctx.font = "16px Arial";
+        this.ctx.fillText("Debug Canvas (disabled)", 10, 30);
+        this.ctx.restore();
+      }
+    }
+
+    // ============================================
+    // GAME LOOP
+    // ============================================
+    class GameLoop {
+      constructor() {
+        this.running = false;
+        this.lastTime = 0;
+        this.accumulator = 0;
+        this.fixedDeltaTime = PHYSICS.TIMESTEP;
+      }
+
+      start(updateCallback, renderCallback) {
+        this.running = true;
+        this.updateCallback = updateCallback;
+        this.renderCallback = renderCallback;
+        this.lastTime = performance.now();
+        this.loop(this.lastTime);
+      }
+
+      loop(currentTime) {
+        if (!this.running) return;
+
+        const deltaTime = (currentTime - this.lastTime) / 1000;
+        this.lastTime = currentTime;
+        this.accumulator += deltaTime;
+
+        while (this.accumulator >= this.fixedDeltaTime) {
+          this.updateCallback(this.fixedDeltaTime);
+          this.accumulator -= this.fixedDeltaTime;
+        }
+
+        this.renderCallback();
+        requestAnimationFrame((time) => this.loop(time));
+      }
+
+      stop() {
+        this.running = false;
+      }
+    }
+
+    // ============================================
+    // MAIN APPLICATION
+    // ============================================
+    class GameApp {
+      constructor() {
+        this.world = new NapeWorld();
+        this.threeRenderer = new ThreeRenderer("threeCanvas");
+
+        // Create terrain (now with 3D meshes)
+        this.terrain = new Terrain(
+          this.world,
+          DEMO_LEVEL.terrain,
+          this.threeRenderer.scene,
+        );
+
+        this.car = new CarPhysics(
+          this.world,
+          DEMO_LEVEL.spawn,
+          DEFAULT_CAR_CONFIG,
+        );
+        this.input = new InputManager();
+        this.debugRenderer = new DebugRenderer("debugCanvas", this.world);
+
+        // Physics debug renderer
+        this.physicsDebug = new PhysicsDebugRenderer(
+          this.world,
+          this.threeRenderer.scene,
+        );
+
+        this.gameLoop = new GameLoop();
+
+        this.threeRenderer.createCarMeshes(DEFAULT_CAR_CONFIG);
+
+        // Create bridge
+        this.bridge = new Bridge(
+          this.world,
+          DEMO_LEVEL.bridge,
+          this.threeRenderer.scene,
+        );
+
+        // Create physics tires (obstacles)
+        this.tires = [];
+        if (DEMO_LEVEL.tires) {
+          for (const tirePos of DEMO_LEVEL.tires) {
+            const tire = new PhysicsTire(
+              this.world,
+              tirePos,
+              this.threeRenderer.scene,
+            );
+            this.tires.push(tire);
+          }
+        }
+
+        // Create barriers (walls)
+        this.barriers = [];
+        if (DEMO_LEVEL.barriers) {
+          for (const barrierConfig of DEMO_LEVEL.barriers) {
+            const barrier = new Barrier(
+              this.world,
+              barrierConfig,
+              this.threeRenderer.scene,
+            );
+            this.barriers.push(barrier);
+          }
+        }
+
+        this.gameLoop.start(
+          (dt) => this.update(dt),
+          () => this.render(),
+        );
+
+        console.log("Game initialized with 3D terrain, bridge, tires, barriers, and physics debug!");
+        console.log("Press 'P' to toggle physics debug visualization");
+      }
+
+      update(dt) {
+        // Input handling - supports both Arrow keys and WASD
+        if (this.input.isAcceleratePressed()) {
+          this.car.accelerate(1);
+        }
+        if (this.input.isBrakePressed()) {
+          this.car.accelerate(-1);
+        }
+        if (this.input.isLeanBackPressed()) {
+          this.car.lean(-1);
+        }
+        if (this.input.isLeanForwardPressed()) {
+          this.car.lean(1);
+        }
+        if (this.input.isResetPressed()) {
+          this.car.reset(DEMO_LEVEL.spawn);
+          this.bridge.reset();
+          // Reset all tires
+          for (const tire of this.tires) {
+            tire.reset();
+          }
+        }
+
+        // Debug toggle
+        if (this.input.isDebugTogglePressed()) {
+          // Debounce the toggle
+          if (!this.debugToggleCooldown) {
+            this.physicsDebug.toggle();
+            this.debugToggleCooldown = true;
+            setTimeout(() => {
+              this.debugToggleCooldown = false;
+            }, 200);
+          }
+        }
+
+        // Physics step
+        this.world.step(dt);
+
+        // Update bridge
+        this.bridge.update();
+
+        // Update physics tires
+        for (const tire of this.tires) {
+          tire.update();
+        }
+
+        // Update physics debug
+        this.physicsDebug.update();
+      }
+
+      render() {
+        const carPos = this.car.getPosition();
+        this.threeRenderer.updateCarPosition(this.car);
+        this.threeRenderer.render();
+
+        this.debugRenderer.setCamera(carPos.x, carPos.y);
+        this.debugRenderer.render();
+      }
+    }
+
+    // ============================================
+    // START
+    // ============================================
+    // Start the game initialization
+    initLibraries().then(() => {
+      console.log("Starting GameApp...");
+      new GameApp();
+      console.log("GameApp initialized successfully");
+    }).catch(err => {
+      console.error("Failed to start game:", err);
+    });
+  </script>
+</body>
+</html>

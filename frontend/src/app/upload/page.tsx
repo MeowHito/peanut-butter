@@ -19,11 +19,14 @@ export default function UploadPage() {
     const { user, hydrate } = useAuthStore();
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
+    const [category, setCategory] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const [thumbnail, setThumbnail] = useState<File | null>(null);
     const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState("");
+
+    const categories = ["Action", "Adventure", "Puzzle", "Arcade", "RPG"];
 
     useEffect(() => {
         hydrate();
@@ -90,6 +93,10 @@ export default function UploadPage() {
             setError("Please enter a title");
             return;
         }
+        if (!category) {
+            setError("Please select a category");
+            return;
+        }
 
         setUploading(true);
         setError("");
@@ -97,6 +104,7 @@ export default function UploadPage() {
         const formData = new FormData();
         formData.append("gameFile", file);
         formData.append("title", title.trim());
+        formData.append("category", category);
         if (description.trim()) {
             formData.append("description", description.trim());
         }
@@ -148,6 +156,25 @@ export default function UploadPage() {
                         placeholder="Enter game title"
                         className="w-full border border-border bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none"
                     />
+                </div>
+
+                {/* Category */}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">
+                        Category <span className="text-destructive">*</span>
+                    </label>
+                    <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full border border-border bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none"
+                    >
+                        <option value="">Select a category</option>
+                        {categories.map((c) => (
+                            <option key={c} value={c}>
+                                {c}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* Description */}
@@ -240,8 +267,8 @@ export default function UploadPage() {
                         <div
                             {...getRootProps()}
                             className={`flex cursor-pointer flex-col items-center justify-center border border-dashed px-6 py-10 text-center transition-colors ${isDragActive
-                                    ? "border-primary bg-primary/5"
-                                    : "border-border hover:border-muted-foreground"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground"
                                 }`}
                         >
                             <input {...getInputProps()} />

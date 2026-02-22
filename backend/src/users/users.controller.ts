@@ -5,12 +5,16 @@ import {
   Body,
   Get,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 @Controller('users')
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get()
   findAll() {
@@ -25,7 +29,6 @@ export class UsersController {
     return this.usersService.changeRole(id, role);
   }
 
-  // 👇 เพิ่มตรงนี้
   @Delete(':id')
   deleteUser(@Param('id') id: string) {
     return this.usersService.deleteUser(id);

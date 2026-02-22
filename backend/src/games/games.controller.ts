@@ -145,6 +145,13 @@ export class GamesController {
         return this.gamesService.updateGame(id, updateGameDto, thumbnailFile);
     }
 
+    // ================= TOGGLE VISIBILITY (ADMIN) =================
+    @Patch(':id/visibility')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async toggleVisibility(@Param('id') id: string) {
+        return this.gamesService.toggleVisibility(id);
+    }
+
     // ================= TOGGLE FEATURED (ADMIN) =================
     @Patch(':id/featured')
     @UseGuards(JwtAuthGuard, AdminGuard)
@@ -152,9 +159,9 @@ export class GamesController {
         return this.gamesService.toggleFeatured(id);
     }
 
-    // ================= DELETE (ADMIN) =================
+    // ================= DELETE (OWNER OR ADMIN) =================
     @Delete(':id')
-    @UseGuards(JwtAuthGuard, AdminGuard)
+    @UseGuards(JwtAuthGuard)
     async deleteGame(@Param('id') id: string, @Request() req) {
         return this.gamesService.deleteGame(
             id,

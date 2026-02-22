@@ -48,7 +48,7 @@
 }
 
 :root {
-  /* Classic sharp design — minimal rounding */
+
   --radius: 2px;
 
   --background: oklch(0.99 0 0);

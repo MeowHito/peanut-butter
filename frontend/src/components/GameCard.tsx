@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Gamepad2, FileCode, Archive } from "lucide-react";
+import { Gamepad2, FileCode, Archive, Play } from "lucide-react";
 import type { Game } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -12,7 +12,7 @@ function formatSize(bytes: number) {
 
 export default function GameCard({ game }: { game: Game }) {
     const uploader =
-        typeof game.uploadedBy === "object"
+        typeof game.uploadedBy === "object" && game.uploadedBy
             ? game.uploadedBy.username
             : "Unknown";
 
@@ -41,6 +41,12 @@ export default function GameCard({ game }: { game: Game }) {
                     )}
                     {game.fileType}
                 </span>
+                {/* Category badge */}
+                {game.category && (
+                    <span className="absolute left-2 top-2 border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                        {game.category}
+                    </span>
+                )}
             </div>
 
             {/* Content */}
@@ -50,9 +56,18 @@ export default function GameCard({ game }: { game: Game }) {
                 </h3>
                 <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
                     <span>{uploader}</span>
-                    <span>{formatSize(game.fileSize)}</span>
+                    <div className="flex items-center gap-2">
+                        {game.playCount != null && game.playCount > 0 && (
+                            <span className="flex items-center gap-0.5">
+                                <Play className="h-3 w-3" />
+                                {game.playCount}
+                            </span>
+                        )}
+                        <span>{formatSize(game.fileSize)}</span>
+                    </div>
                 </div>
             </div>
         </Link>
     );
 }
+

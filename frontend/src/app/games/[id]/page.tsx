@@ -13,6 +13,8 @@ import {
     User,
     HardDrive,
     X,
+    Tag,
+    Layers,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
@@ -66,12 +68,12 @@ export default function GameDetailPage() {
     const isOwner =
         user &&
         game &&
-        (typeof game.uploadedBy === "object"
+        (typeof game.uploadedBy === "object" && game.uploadedBy
             ? game.uploadedBy._id === user.id
             : game.uploadedBy === user.id);
 
     const uploaderName =
-        game && typeof game.uploadedBy === "object"
+        game && typeof game.uploadedBy === "object" && game.uploadedBy
             ? game.uploadedBy.username
             : "Unknown";
 
@@ -147,10 +149,24 @@ export default function GameDetailPage() {
                             )}
                             {game.fileType.toUpperCase()} · {formatSize(game.fileSize)}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                            <HardDrive className="h-3.5 w-3.5" />
-                            {formatSize(game.fileSize)}
-                        </span>
+                        {game.category && (
+                            <span className="flex items-center gap-1.5">
+                                <Tag className="h-3.5 w-3.5" />
+                                {game.category}
+                            </span>
+                        )}
+                        {game.genre && (
+                            <span className="flex items-center gap-1.5">
+                                <Layers className="h-3.5 w-3.5" />
+                                {game.genre}
+                            </span>
+                        )}
+                        {game.playCount != null && (
+                            <span className="flex items-center gap-1.5">
+                                <Play className="h-3.5 w-3.5" />
+                                {game.playCount} play{game.playCount !== 1 ? "s" : ""}
+                            </span>
+                        )}
                     </div>
 
                     {/* Play button */}
@@ -158,8 +174,8 @@ export default function GameDetailPage() {
                         <button
                             onClick={() => setPlaying(!playing)}
                             className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold transition-colors ${playing
-                                    ? "border border-border hover:bg-accent"
-                                    : "border border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                                ? "border border-border hover:bg-accent"
+                                : "border border-primary bg-primary text-primary-foreground hover:bg-primary/90"
                                 }`}
                         >
                             {playing ? (
