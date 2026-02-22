@@ -12,6 +12,7 @@ import * as AdmZip from 'adm-zip';
 import { Game, GameDocument } from './schemas/game.schema';
 import { UploadGameDto } from './dto/upload-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
+import { CategoriesService } from '../categories/categories.service';
 
 @Injectable()
 export class GamesService {
@@ -21,6 +22,7 @@ export class GamesService {
 
     constructor(
         @InjectModel(Game.name) private gameModel: Model<GameDocument>,
+        private readonly categoriesService: CategoriesService,
     ) {
         // Ensure uploads directories exist
         if (!fs.existsSync(this.uploadsDir)) {
@@ -240,11 +242,18 @@ export class GamesService {
     }
 
     async incrementPlayCount(id: string) {
-        return this.gameModel.findByIdAndUpdate(
+        const game = await this.gameModel.findByIdAndUpdate(
             id,
             { $inc: { playCount: 1 } },
             { new: true }
         ).exec();
+
+        // Also increment the category's play count
+        if (game?.category) {
+            await this.categoriesService.incrementPlayCount(game.category);
+        }
+
+        return game;
     }
     async findOne(id: string) {
         const game = await this.gameModel
@@ -347,6 +356,20 @@ export class GamesService {
 
     }
 
+
+    async toggleVisibility(id: string) {
+        const game = await this.gameModel.findById(id);
+        if (!game) throw new NotFoundException('Game not found');
+
+        game.isVisible = !game.isVisible;
+        await game.save();
+
+        return {
+            message: `Game is now ${game.isVisible ? 'visible' : 'hidden'}`,
+            isVisible: game.isVisible,
+        };
+    }
+
     async toggleFeatured(id: string) {
         const game = await this.gameModel.findById(id);
         if (!game) throw new NotFoundException('Game not found');
@@ -374,8 +397,10 @@ export class GamesService {
             throw new NotFoundException('Game not found');
         }
 
-        // Check ownership
-        if (game.uploadedBy.toString() !== userId.toString()) {
+        // Check ownership or admin
+        const isOwner = game.uploadedBy.toString() === userId.toString();
+        const isAdmin = role === 'admin';
+        if (!isOwner && !isAdmin) {
             throw new ForbiddenException('You can only delete your own games');
         }
 

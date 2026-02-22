@@ -37,7 +37,7 @@ export default function ProfilePage() {
                 if (user) {
                     const myGames = res.data.games.filter((g: Game) => {
                         const uploaderId =
-                            typeof g.uploadedBy === "object" ? g.uploadedBy._id : g.uploadedBy;
+                            typeof g.uploadedBy === "object" && g.uploadedBy ? g.uploadedBy._id : g.uploadedBy;
                         return uploaderId === user.id;
                     });
                     setGames(myGames);

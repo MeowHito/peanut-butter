@@ -16,7 +16,12 @@ export interface Game {
     fileSize: number;
     thumbnailUrl: string;
     isVisible?: boolean;
+    isFeatured?: boolean;
     playUrl: string;
+    category?: string;
+    genre?: string;
+    playCount?: number;
+    rating?: number;
     createdAt: string;
 }
 

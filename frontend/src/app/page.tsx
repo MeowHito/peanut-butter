@@ -2,19 +2,29 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Gamepad2 } from "lucide-react";
+import { ArrowRight, Gamepad2, Star } from "lucide-react";
 import api from "@/lib/api";
 import GameCard from "@/components/GameCard";
 import type { Game } from "@/types";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
 export default function HomePage() {
   const [games, setGames] = useState<Game[]>([]);
+  const [featuredGames, setFeaturedGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get("/games", { params: { page: 1, limit: 8 } })
-      .then((res) => setGames(res.data.games))
+    Promise.all([
+      api.get("/games", { params: { page: 1, limit: 8 } }),
+      api.get("/games/featured").catch(() => ({ data: [] })),
+    ])
+      .then(([gamesRes, featuredRes]) => {
+        setGames(gamesRes.data.games);
+        setFeaturedGames(
+          Array.isArray(featuredRes.data) ? featuredRes.data : []
+        );
+      })
       .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
@@ -37,8 +47,9 @@ export default function HomePage() {
               HTML games online
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
-              Upload your HTML and ZIP game files, share them with the community,
-              and play directly in the browser. No installs needed.
+              Upload your HTML and ZIP game files, share them with the
+              community, and play directly in the browser. No installs
+              needed.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -59,10 +70,60 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Featured Games */}
+      {featuredGames.length > 0 && (
+        <section className="border-b border-border bg-muted/30">
+          <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
+            <div className="mb-5 flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500" />
+              <h2 className="text-xl font-bold tracking-tight">
+                Featured Games
+              </h2>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {featuredGames.map((game) => (
+                <Link
+                  key={game._id}
+                  href={`/games/${game._id}`}
+                  className="group flex-shrink-0 w-56 border border-border bg-card transition-colors hover:border-foreground/20"
+                >
+                  <div className="relative flex h-32 items-center justify-center bg-muted">
+                    {game.thumbnailUrl ? (
+                      <img
+                        src={`${API_BASE}${game.thumbnailUrl}`}
+                        alt={game.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Gamepad2 className="h-8 w-8 text-muted-foreground/40" />
+                    )}
+                    <span className="absolute right-1.5 top-1.5">
+                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                    </span>
+                  </div>
+                  <div className="border-t border-border p-2.5">
+                    <h3 className="text-sm font-semibold truncate group-hover:text-primary">
+                      {game.title}
+                    </h3>
+                    {game.category && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {game.category}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Recent Games */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight">Recent Games</h2>
+          <h2 className="text-xl font-bold tracking-tight">
+            Recent Games
+          </h2>
           <Link
             href="/games"
             className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
