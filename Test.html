@@ -1,259 +1,2061 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini Racing Game</title>
+    <title>Document</title>
+</head>
+
+<body>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
-            background-color: #222;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #34c759;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+
+        #container {
+            width: 100vw;
             height: 100vh;
-            font-family: sans-serif;
-            overflow: hidden;
-        }
-
-        #gameArea {
-            width: 300px;
-            height: 500px;
-            background-color: #444;
             position: relative;
-            overflow: hidden;
-            border-left: 5px dashed white;
-            border-right: 5px dashed white;
         }
 
-        .car {
-            width: 40px;
-            height: 70px;
-            position: absolute;
-            border-radius: 5px;
-            box-shadow: 0 0 5px rgba(0,0,0,0.5);
-        }
-
-        #playerCar {
-            background-color: #00bfff;
-            bottom: 20px;
-            left: 130px;
-            z-index: 10;
-            transition: left 0.1s;
-        }
-
-        .enemyCar {
-            background-color: #ff3333;
-            top: -100px;
-        }
-
-        #scoreBoard {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            font-size: 20px;
-            z-index: 20;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 10px;
-            border-radius: 5px;
-        }
-
-        #gameOver {
+        #threeCanvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 30;
-            display: none;
         }
 
-        button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #00bfff;
-            border: none;
-            border-radius: 5px;
-            color: white;
-        }
-
-        button:hover {
-            background-color: #008ccc;
-        }
-
-        .roadLine {
-            width: 5px;
-            height: 50px;
-            background-color: rgba(255,255,255,0.5);
+        #hud {
             position: absolute;
-            left: 147.5px;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        #speedDisplay {
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 20px;
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+            min-width: 110px;
+            text-align: center;
+        }
+
+        #cameraMode {
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 100;
+            white-space: nowrap;
         }
     </style>
-</head>
-<body>
-
-    <div id="gameArea">
-        <div id="scoreBoard">Score: <span id="score">0</span></div>
-        <div id="playerCar" class="car"></div>
-        <div id="gameOver">
-            <h2>Game Over!</h2>
-            <p>Your Score: <span id="finalScore">0</span></p>
-            <button onclick="restartGame()">Play Again</button>
+    <div id="container">
+        <canvas id="threeCanvas"></canvas>
+        <div id="hud">
+            <div id="speedDisplay">0 km/h</div>
+            <div id="cameraMode">TOP-DOWN</div>
+        </div>
+        <div id="instructions">
+            Arrow Keys / WASD to drive &nbsp;|&nbsp; Space to brake &nbsp;|&nbsp; Shift to drift &nbsp;|&nbsp; C to
+            switch camera
         </div>
     </div>
 
     <script>
-        const gameArea = document.getElementById('gameArea');
-        const playerCar = document.getElementById('playerCar');
-        const scoreElement = document.getElementById('score');
-        const gameOverScreen = document.getElementById('gameOver');
-        const finalScoreElement = document.getElementById('finalScore');
-
-        let isGameOver = false;
-        let score = 0;
-        let playerX = 130;
-        let enemies = [];
-        let roadLines = [];
-        let gameLoopId;
-        let enemySpawnId;
-        let gameSpeed = 5;
-
-        // สร้างเส้นถนน
-        for (let i = 0; i < 6; i++) {
-            let line = document.createElement('div');
-            line.classList.add('roadLine');
-            line.style.top = (i * 100) + 'px';
-            gameArea.appendChild(line);
-            roadLines.push(line);
-        }
-
-        // ควบคุมรถด้วยปุ่มลูกศรซ้ายขวา
-        document.addEventListener('keydown', (e) => {
-            if (isGameOver) return;
-            
-            if (e.key === 'ArrowLeft' && playerX > 10) {
-                playerX -= 20;
-            } else if (e.key === 'ArrowRight' && playerX < 250) {
-                playerX += 20;
+        // ============================================
+        // LIBRARY INITIALIZATION
+        // ============================================
+        async function initLibraries() {
+            if (document.readyState === "loading") {
+                await new Promise((resolve) => {
+                    document.addEventListener("DOMContentLoaded", resolve, {
+                        once: true,
+                    });
+                });
             }
-            playerCar.style.left = playerX + 'px';
-        });
 
-        // ฟังก์ชันสร้างรถศัตรู
-        function spawnEnemy() {
-            if (isGameOver) return;
+            const THREE = await import("https://esm.sh/three");
+            window.THREE = THREE;
 
-            let enemy = document.createElement('div');
-            enemy.classList.add('car', 'enemyCar');
-            
-            // สุ่มตำแหน่งแกน X
-            let randomLeft = Math.floor(Math.random() * 260);
-            enemy.style.left = randomLeft + 'px';
-            enemy.style.top = '-100px';
-            
-            gameArea.appendChild(enemy);
-            enemies.push(enemy);
-
-            // สุ่มเวลาเกิดของรถคันต่อไป
-            let randomTime = Math.random() * 1000 + 800;
-            enemySpawnId = setTimeout(spawnEnemy, randomTime);
-        }
-
-        // เช็คการชนกัน
-        function isCollide(a, b) {
-            let aRect = a.getBoundingClientRect();
-            let bRect = b.getBoundingClientRect();
-
-            return !(
-                (aRect.bottom < bRect.top) ||
-                (aRect.top > bRect.bottom) ||
-                (aRect.right < bRect.left) ||
-                (aRect.left > bRect.right)
+            const { default: initNape } = await import(
+                "https://cdn.skypack.dev/@newkrok/nape-js@1.0.0"
             );
+            initNape();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
+            const nape = window.nape;
+            if (!nape) {
+                throw new Error("Nape failed to load");
+            }
+
+            return { nape, THREE };
         }
 
-        // ลูปหลักของเกม
-        function gameLoop() {
-            if (isGameOver) return;
+        // ============================================
+        // CONSTANTS
+        // ============================================
+        const PHYSICS = {
+            PIXEL_RATIO: 10,
+            TIMESTEP: 1 / 60,
+            VELOCITY_ITERATIONS: 8,
+            POSITION_ITERATIONS: 8,
+            SUB_STEPS: 2,
+        };
 
-            // เลื่อนเส้นถนน
-            roadLines.forEach(line => {
-                let currentTop = parseInt(line.style.top);
-                if (currentTop >= 500) {
-                    currentTop = -50;
+        const CAR = {
+            WIDTH: 1.32,
+            LENGTH: 2.64,
+            // iforce2d-style force/impulse physics
+            MAX_FORWARD_SPEED: 468,       // px/s (~169 km/h)
+            MAX_REVERSE_SPEED: 78,        // px/s (~28 km/h)
+            MAX_DRIVE_FORCE: 110,          // force magnitude (gradual acceleration)
+            BRAKE_FORCE: 120,             // braking force magnitude (was 300 — less aggressive)
+            MAX_LATERAL_IMPULSE: 3.5,     // cap for lateral friction impulse (lower = more drift/slide)
+            DRAG_MODIFIER: 0.08,          // air/rolling resistance (gentle, always active)
+            ENGINE_BRAKE: 0.25,           // engine braking when coasting (no throttle, no brake)
+            ANGULAR_FRICTION: 0.3,        // angular velocity damping factor (lower = car rotates more freely when sliding)
+            STEER_TORQUE: 1320,           // steering torque
+            STEER_LOCK_SPEED: 40,         // below this speed, steering is reduced to prevent spinning in place
+            STEER_LOCK_POWER: 2.5,       // exponent for speed-based steer curve (higher = more suppression at low speed)
+            // Drift / handbrake
+            DRIFT_LATERAL_IMPULSE: 1.2,   // lateral impulse cap when handbrake is held (low = slide, but not zero)
+            DRIFT_ANGULAR_FRICTION: 0.18, // less angular damping while drifting (but not too free)
+            DRIFT_STEER_TORQUE: 1600,     // slightly stronger counter-steer while drifting
+            DRIFT_BRAKE_FACTOR: 0.3,      // how much the handbrake slows the car (gentle, not full stop)
+            DRIFT_MAX_ANGULAR_VEL: 3.5,   // cap angular velocity during drift (prevents 360 spins)
+        };
+
+        const AI_CONF = {
+            WAYPOINT_REACH_DIST: 5.0,
+            STEER_SENSITIVITY: 2.8,
+            MAX_THROTTLE: 0.9,
+            COUNT: 11,
+            // Obstacle avoidance
+            AVOIDANCE_RADIUS: 7.0,       // distance to start avoiding other cars
+            AVOIDANCE_STRENGTH: 2.0,     // how strongly to steer away
+            // Reverse / stuck
+            STUCK_SPEED_THRESHOLD: 0.5,  // speed below which we consider "stuck" (world units/s)
+            STUCK_TIME_TO_REVERSE: 0.8,  // seconds stuck before reversing
+            REVERSE_DURATION: 1.2,       // how long to reverse when stuck
+            // Look-ahead for cornering
+            LOOKAHEAD_WPS: 4,            // how many waypoints ahead to check for turn angle
+            // Drift parameters
+            DRIFT_MIN_SPEED: 3.5,        // minimum speed (world units/s) to initiate drift
+            DRIFT_TURN_ANGLE: Math.PI * 0.35, // turn angle threshold to start drifting
+            DRIFT_LOOKAHEAD_DIST: 12,    // distance to upcoming corner to start drift
+        };
+
+        const TRACK = {
+            ROAD_WIDTH: 9.0,
+            WALL_THICKNESS: 0.5,
+            CURB_WIDTH: 0.6,
+            CURVE_SEGMENTS: 8,  // segments per curve section
+        };
+
+        const COLLISION = {
+            CAR: { group: 1, mask: 2 | 4 },
+            WALL: { group: 2, mask: 1 },
+            CAR2: { group: 4, mask: 1 },
+        };
+
+        const COLORS = {
+            PLAYER: 0xff2d55,
+            AI: [0x00bfff, 0x32d74b, 0xffd60a, 0xff9f0a, 0xbf5af2, 0x64d2ff, 0xac8e68, 0xff6482, 0x30b0c7, 0x8e8e93, 0xffdab9],
+            ROAD: 0x3a3a3c,
+            GRASS: 0x34c759,
+            WALL: 0xebebf0,
+            LINE_WHITE: 0xffffff,
+        };
+
+        // ============================================
+        // NAPE WORLD (zero gravity for top-down)
+        // ============================================
+        class NapeWorld {
+            constructor() {
+                this.pixelRatio = PHYSICS.PIXEL_RATIO;
+                this.space = new nape.space.Space(new nape.geom.Vec2(0, 0));
+            }
+
+            step(dt) {
+                const subDt = dt / PHYSICS.SUB_STEPS;
+                for (let i = 0; i < PHYSICS.SUB_STEPS; i++) {
+                    this.space.step(
+                        subDt,
+                        PHYSICS.VELOCITY_ITERATIONS,
+                        PHYSICS.POSITION_ITERATIONS,
+                    );
                 }
-                line.style.top = (currentTop + gameSpeed) + 'px';
-            });
+            }
+        }
 
-            // เลื่อนรถศัตรูและเช็คการชน
-            enemies.forEach((enemy, index) => {
-                let currentTop = parseInt(enemy.style.top);
-                
-                // ถ้ารถศัตรูวิ่งผ่านไปได้
-                if (currentTop >= 500) {
-                    enemy.remove();
-                    enemies.splice(index, 1);
-                    score += 10;
-                    scoreElement.innerText = score;
-                    
-                    // เพิ่มความเร็วเมื่อคะแนนถึงกำหนด
-                    if (score % 50 === 0) {
-                        gameSpeed += 0.5;
+        // ============================================
+        // THREE RENDERER (tilted 3D perspective)
+        // ============================================
+        class ThreeRenderer {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(COLORS.GRASS);
+
+                // Camera mode settings
+                this.cameraMode = "topdown";
+
+                // Top-down: tilt angle from vertical (~65°), high distance
+                this.topdownTiltAngle = Math.PI * 0.36;
+                this.topdownDistance = 45;
+
+                // TPS: lower tilt, closer, follows car rotation
+                this.tpsTiltAngle = Math.PI * 0.135; // ~24° from horizontal — closer to ground
+                this.tpsDistance = 12.6;
+
+                // Active values (interpolated between modes)
+                this.cameraTiltAngle = this.topdownTiltAngle;
+                this.cameraDistance = this.topdownDistance;
+                this.cameraAngle = 0; // car heading for TPS
+                this.followAngle = Math.PI / 2; // smoothed heading (starts at top-down default)
+                this.angleSmooth = 0.06;
+
+                const aspect = window.innerWidth / window.innerHeight;
+                this.camera = new THREE.PerspectiveCamera(50, aspect, 1, 800);
+
+                // Position camera behind and above, looking down at an angle
+                this._setCameraOffset(0, 0);
+
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    antialias: true,
+                    logarithmicDepthBuffer: true,
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+                // Ambient light for base illumination
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+
+                // Main directional light with shadows
+                const dir = new THREE.DirectionalLight(0xfffde8, 0.9);
+                dir.position.set(15, -15, 30);
+                dir.castShadow = true;
+                dir.shadow.mapSize.width = 4096;
+                dir.shadow.mapSize.height = 4096;
+                dir.shadow.camera.near = 1;
+                dir.shadow.camera.far = 80;
+                dir.shadow.camera.left = -40;
+                dir.shadow.camera.right = 40;
+                dir.shadow.camera.top = 40;
+                dir.shadow.camera.bottom = -40;
+                dir.shadow.bias = -0.0005;
+                dir.shadow.normalBias = 0.02;
+                dir.shadow.radius = 2.5;
+                this.scene.add(dir);
+                this.scene.add(dir.target);
+                this.dirLight = dir;
+
+                // Hemisphere light for sky/ground color variation
+                const hemi = new THREE.HemisphereLight(0x87ceeb, 0x34c759, 0.4);
+                this.scene.add(hemi);
+
+                this.followX = 0;
+                this.followY = 0;
+                this.cameraSmooth = 0.09;
+
+                window.addEventListener("resize", () => this.onResize());
+            }
+
+            _setCameraOffset(tx, ty) {
+                const d = this.cameraDistance;
+                const tilt = this.cameraTiltAngle;
+                const heading = this.followAngle;
+
+                // Camera offset: behind the car along its heading direction
+                const offsetX = -Math.cos(heading) * d * Math.cos(tilt);
+                const offsetY = -Math.sin(heading) * d * Math.cos(tilt);
+                const offsetZ = d * Math.sin(tilt);
+
+                this.camera.position.set(tx + offsetX, ty + offsetY, offsetZ);
+                this.camera.lookAt(tx, ty, 0);
+                this.camera.up.set(0, 0, 1);
+            }
+
+            onResize() {
+                const aspect = window.innerWidth / window.innerHeight;
+                this.camera.aspect = aspect;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            updateCamera(tx, ty, carAngle, mode) {
+                this.cameraMode = mode;
+
+                // Target values based on mode
+                const targetTilt = mode === "tps" ? this.tpsTiltAngle : this.topdownTiltAngle;
+                const targetDist = mode === "tps" ? this.tpsDistance : this.topdownDistance;
+
+                // Smoothly interpolate camera parameters
+                const modeSmooth = 0.05;
+                this.cameraTiltAngle += (targetTilt - this.cameraTiltAngle) * modeSmooth;
+                this.cameraDistance += (targetDist - this.cameraDistance) * modeSmooth;
+
+                // Smooth position follow
+                this.followX += (tx - this.followX) * this.cameraSmooth;
+                this.followY += (ty - this.followY) * this.cameraSmooth;
+
+                // Smooth angle follow (handle wrap-around)
+                if (mode === "tps") {
+                    const targetAngle = carAngle;
+                    let angleDiff = targetAngle - this.followAngle;
+                    // Normalize to [-PI, PI]
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    this.followAngle += angleDiff * this.angleSmooth;
+                } else {
+                    // Top-down: camera always looks from the same direction (behind -Y)
+                    const topdownAngle = Math.PI / 2; // fixed heading pointing up
+                    let angleDiff = topdownAngle - this.followAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    this.followAngle += angleDiff * modeSmooth;
+                }
+
+                this._setCameraOffset(this.followX, this.followY);
+
+                // Move directional light + shadow camera with player for crisp shadows
+                const shadowOffset = 15;
+                this.dirLight.position.set(
+                    this.followX + shadowOffset,
+                    this.followY - shadowOffset,
+                    30,
+                );
+                this.dirLight.target.position.set(this.followX, this.followY, 0);
+                this.dirLight.target.updateMatrixWorld();
+
+                // Adjust shadow frustum based on camera mode (TPS = tighter = sharper)
+                const shadowSize = mode === "tps" ? 20 : 40;
+                const cam = this.dirLight.shadow.camera;
+                cam.left = -shadowSize;
+                cam.right = shadowSize;
+                cam.top = shadowSize;
+                cam.bottom = -shadowSize;
+                cam.updateProjectionMatrix();
+            }
+
+            render() {
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // ============================================
+        // INPUT MANAGER
+        // ============================================
+        class InputManager {
+            constructor() {
+                this.keys = {};
+                this.cameraMode = "topdown"; // "topdown" or "tps"
+                window.addEventListener("keydown", (e) => {
+                    this.keys[e.code] = true;
+                    if (e.code === "KeyC") {
+                        this.cameraMode = this.cameraMode === "topdown" ? "tps" : "topdown";
+                    }
+                    if (
+                        [
+                            "ArrowUp",
+                            "ArrowDown",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Space",
+                            "ShiftLeft",
+                            "ShiftRight",
+                        ].includes(e.code)
+                    ) {
+                        e.preventDefault();
+                    }
+                });
+                window.addEventListener("keyup", (e) => {
+                    this.keys[e.code] = false;
+                });
+            }
+
+            getCarInput() {
+                let throttle = 0,
+                    steer = 0,
+                    brake = false,
+                    handbrake = false;
+                if (this.keys["ArrowUp"] || this.keys["KeyW"]) throttle += 1;
+                if (this.keys["ArrowDown"] || this.keys["KeyS"]) throttle -= 1;
+                if (this.keys["ArrowLeft"] || this.keys["KeyA"]) steer += 1;
+                if (this.keys["ArrowRight"] || this.keys["KeyD"]) steer -= 1;
+                if (this.keys["Space"]) brake = true;
+                if (this.keys["ShiftLeft"] || this.keys["ShiftRight"]) handbrake = true;
+                return { throttle, steer, brake, handbrake };
+            }
+        }
+
+        // ============================================
+        // GAME LOOP
+        // ============================================
+        class GameLoop {
+            constructor() {
+                this.running = false;
+                this.lastTime = 0;
+                this.accumulator = 0;
+                this.fixedDt = PHYSICS.TIMESTEP;
+            }
+
+            start(updateFn, renderFn) {
+                this.running = true;
+                this.updateFn = updateFn;
+                this.renderFn = renderFn;
+                this.lastTime = performance.now();
+                this._loop(this.lastTime);
+            }
+
+            _loop(now) {
+                if (!this.running) return;
+                const dt = Math.min((now - this.lastTime) / 1000, 0.1);
+                this.lastTime = now;
+                this.accumulator += dt;
+
+                while (this.accumulator >= this.fixedDt) {
+                    this.updateFn(this.fixedDt);
+                    this.accumulator -= this.fixedDt;
+                }
+
+                this.renderFn();
+                requestAnimationFrame((t) => this._loop(t));
+            }
+        }
+
+        // ============================================
+        // CAR (iforce2d top-down physics)
+        // ============================================
+        class Car {
+            constructor(world, scene, x, y, angle, color) {
+                this.world = world;
+                this.scene = scene;
+                this.color = color;
+                this.steerAngle = 0;
+                this.frontWheels = [];
+                this._createBody(x, y, angle);
+                this._createMesh(color);
+            }
+
+            _createBody(x, y, angle) {
+                const pr = this.world.pixelRatio;
+                this.body = new nape.phys.Body(nape.phys.BodyType.get_DYNAMIC());
+
+                const shape = new nape.shape.Polygon(
+                    nape.shape.Polygon.box(CAR.LENGTH * pr, CAR.WIDTH * pr),
+                );
+                const mat = new nape.phys.Material(0.2, 0.3, 0.3, 1.5, 0);
+                shape.set_material(mat);
+
+                const filter = new nape.dynamics.InteractionFilter();
+                filter.set_collisionGroup(
+                    COLLISION.CAR.group | COLLISION.CAR2.group,
+                );
+                filter.set_collisionMask(COLLISION.CAR.mask);
+                shape.set_filter(filter);
+
+                this.body.get_shapes().add(shape);
+                this.body.set_position(new nape.geom.Vec2(x * pr, y * pr));
+                this.body.set_rotation(angle);
+                this.body.set_space(this.world.space);
+            }
+
+            _createMesh(color) {
+                const group = new THREE.Group();
+                const bodyH = 0.35; // car body height
+                const roofH = 0.3;  // cabin/roof height
+
+                // Main body (lower chassis)
+                const bodyGeo = new THREE.BoxGeometry(CAR.LENGTH, CAR.WIDTH, bodyH);
+                const bodyMtl = new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: 0.6,
+                    metalness: 0.3,
+                });
+                const bodyMesh = new THREE.Mesh(bodyGeo, bodyMtl);
+                bodyMesh.position.z = bodyH / 2;
+                bodyMesh.castShadow = true;
+                bodyMesh.receiveShadow = true;
+                group.add(bodyMesh);
+
+                // Hood (front section, slightly raised)
+                const hoodGeo = new THREE.BoxGeometry(CAR.LENGTH * 0.35, CAR.WIDTH * 0.9, 0.08);
+                const hoodMtl = new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: 0.5,
+                    metalness: 0.4,
+                });
+                const hood = new THREE.Mesh(hoodGeo, hoodMtl);
+                hood.position.set(CAR.LENGTH * 0.25, 0, bodyH + 0.04);
+                hood.castShadow = true;
+                group.add(hood);
+
+                // Cabin (roof box)
+                const cabinGeo = new THREE.BoxGeometry(CAR.LENGTH * 0.35, CAR.WIDTH * 0.85, roofH);
+                const cabinMtl = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(color).multiplyScalar(0.8),
+                    roughness: 0.5,
+                    metalness: 0.2,
+                });
+                const cabin = new THREE.Mesh(cabinGeo, cabinMtl);
+                cabin.position.set(-CAR.LENGTH * 0.05, 0, bodyH + roofH / 2);
+                cabin.castShadow = true;
+                group.add(cabin);
+
+                // Windshield (front glass, tilted)
+                const wsGeo = new THREE.BoxGeometry(0.05, CAR.WIDTH * 0.75, roofH * 0.85);
+                const wsMtl = new THREE.MeshStandardMaterial({
+                    color: 0x88ccff,
+                    roughness: 0.1,
+                    metalness: 0.5,
+                    transparent: true,
+                    opacity: 0.6,
+                });
+                const ws = new THREE.Mesh(wsGeo, wsMtl);
+                ws.position.set(CAR.LENGTH * 0.05 + CAR.LENGTH * 0.35 / 2 - 0.08, 0, bodyH + roofH * 0.45);
+                group.add(ws);
+
+                // Rear window
+                const rwGeo = new THREE.BoxGeometry(0.05, CAR.WIDTH * 0.7, roofH * 0.75);
+                const rwMtl = new THREE.MeshStandardMaterial({
+                    color: 0x88ccff,
+                    roughness: 0.1,
+                    metalness: 0.5,
+                    transparent: true,
+                    opacity: 0.6,
+                });
+                const rw = new THREE.Mesh(rwGeo, rwMtl);
+                rw.position.set(-CAR.LENGTH * 0.05 - CAR.LENGTH * 0.35 / 2 + 0.08, 0, bodyH + roofH * 0.4);
+                group.add(rw);
+
+                // Trunk (rear section, slightly raised)
+                const trunkGeo = new THREE.BoxGeometry(CAR.LENGTH * 0.2, CAR.WIDTH * 0.9, 0.06);
+                const trunkMtl = new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: 0.5,
+                    metalness: 0.4,
+                });
+                const trunk = new THREE.Mesh(trunkGeo, trunkMtl);
+                trunk.position.set(-CAR.LENGTH * 0.32, 0, bodyH + 0.03);
+                trunk.castShadow = true;
+                group.add(trunk);
+
+                // Wheels — 3D cylinders
+                const wheelRadius = 0.18;
+                const wheelWidth = 0.15;
+                const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 12);
+                // CylinderGeometry default axis is Y, which is the car's lateral axis — no rotation needed
+                const wheelMtl = new THREE.MeshStandardMaterial({
+                    color: 0x222222,
+                    roughness: 0.9,
+                });
+                this.frontWheels = [];
+                const wheelDefs = [
+                    { x: CAR.LENGTH * 0.3, y: CAR.WIDTH * 0.52, front: true },
+                    { x: CAR.LENGTH * 0.3, y: -CAR.WIDTH * 0.52, front: true },
+                    { x: -CAR.LENGTH * 0.3, y: CAR.WIDTH * 0.52, front: false },
+                    { x: -CAR.LENGTH * 0.3, y: -CAR.WIDTH * 0.52, front: false },
+                ];
+                for (const wd of wheelDefs) {
+                    const w = new THREE.Mesh(wheelGeo.clone(), wheelMtl.clone());
+                    w.position.set(wd.x, wd.y, wheelRadius);
+                    w.castShadow = true;
+                    group.add(w);
+                    if (wd.front) this.frontWheels.push(w);
+                }
+
+                // Headlights (small emissive boxes)
+                const hlGeo = new THREE.BoxGeometry(0.08, 0.2, 0.12);
+                const hlMtl = new THREE.MeshStandardMaterial({
+                    color: 0xffffcc,
+                    emissive: 0xffffcc,
+                    emissiveIntensity: 0.8,
+                });
+                for (const side of [1, -1]) {
+                    const hl = new THREE.Mesh(hlGeo, hlMtl);
+                    hl.position.set(CAR.LENGTH * 0.49, side * CAR.WIDTH * 0.35, bodyH * 0.6);
+                    group.add(hl);
+                }
+
+                // Taillights (small emissive boxes)
+                const tlGeo = new THREE.BoxGeometry(0.08, 0.2, 0.1);
+                const tlMtl = new THREE.MeshStandardMaterial({
+                    color: 0xff2222,
+                    emissive: 0xff2222,
+                    emissiveIntensity: 0.6,
+                });
+                for (const side of [1, -1]) {
+                    const tl = new THREE.Mesh(tlGeo, tlMtl);
+                    tl.position.set(-CAR.LENGTH * 0.49, side * CAR.WIDTH * 0.35, bodyH * 0.6);
+                    group.add(tl);
+                }
+
+                group.position.z = 0.05;
+                this.scene.add(group);
+                this.mesh = group;
+            }
+
+            // --- iforce2d-style helper methods ---
+
+            getForwardVec() {
+                const a = this.body.get_rotation();
+                return { x: Math.cos(a), y: Math.sin(a) };
+            }
+
+            getRightVec() {
+                const a = this.body.get_rotation();
+                return { x: -Math.sin(a), y: Math.cos(a) };
+            }
+
+            getForwardSpeed() {
+                const vel = this.body.get_velocity();
+                const fwd = this.getForwardVec();
+                return vel.get_x() * fwd.x + vel.get_y() * fwd.y;
+            }
+
+            getLateralVelocity() {
+                const vel = this.body.get_velocity();
+                const r = this.getRightVec();
+                const dot = vel.get_x() * r.x + vel.get_y() * r.y;
+                return { x: r.x * dot, y: r.y * dot };
+            }
+
+            getForwardVelocity() {
+                const vel = this.body.get_velocity();
+                const f = this.getForwardVec();
+                const dot = vel.get_x() * f.x + vel.get_y() * f.y;
+                return { x: f.x * dot, y: f.y * dot };
+            }
+
+            // --- iforce2d physics model (pure impulse-based, no body.force) ---
+
+            updateFriction(dt, throttle, handbrake) {
+                const mass = this.body.get_mass();
+
+                // 1) Lateral friction — cancel sideways velocity via capped impulse
+                const latVel = this.getLateralVelocity();
+                let impulseX = -latVel.x * mass;
+                let impulseY = -latVel.y * mass;
+
+                // Cap the impulse to allow drifting at high lateral forces
+                // Handbrake drastically reduces the cap → car slides sideways
+                const lateralCap = handbrake ? CAR.DRIFT_LATERAL_IMPULSE : CAR.MAX_LATERAL_IMPULSE;
+                const impulseMag = Math.sqrt(impulseX * impulseX + impulseY * impulseY);
+                if (impulseMag > lateralCap) {
+                    const scale = lateralCap / impulseMag;
+                    impulseX *= scale;
+                    impulseY *= scale;
+                }
+
+                this.body.applyImpulse(new nape.geom.Vec2(impulseX, impulseY));
+
+                // 2) Angular friction — dampen spinning
+                // Less damping during drift = car rotates more freely
+                // At low speed, apply much stronger angular damping so the car doesn't spin like a top
+                const absSpeed = Math.abs(this.getForwardSpeed());
+                const lowSpeedRatio = Math.min(1, absSpeed / CAR.STEER_LOCK_SPEED);
+                const baseAngFriction = handbrake ? CAR.DRIFT_ANGULAR_FRICTION : CAR.ANGULAR_FRICTION;
+                // Blend between strong damping (0.85) at standstill and normal at full speed
+                const angFriction = baseAngFriction + (1 - lowSpeedRatio) * (0.85 - baseAngFriction);
+                let angVel = this.body.get_angularVel();
+                angVel *= (1 - angFriction);
+
+                // Cap angular velocity during drift to prevent uncontrollable 360 spins
+                if (handbrake && Math.abs(angVel) > CAR.DRIFT_MAX_ANGULAR_VEL) {
+                    angVel = Math.sign(angVel) * CAR.DRIFT_MAX_ANGULAR_VEL;
+                }
+                this.body.set_angularVel(angVel);
+
+                // 3) Forward drag — always-on air/rolling resistance (gentle)
+                const fwdVel = this.getForwardVelocity();
+                const dragImpX = -CAR.DRAG_MODIFIER * fwdVel.x * dt;
+                const dragImpY = -CAR.DRAG_MODIFIER * fwdVel.y * dt;
+                this.body.applyImpulse(new nape.geom.Vec2(dragImpX, dragImpY));
+
+                // 4) Engine braking — only when coasting (no throttle input)
+                if (throttle === 0) {
+                    const ebImpX = -CAR.ENGINE_BRAKE * fwdVel.x * dt;
+                    const ebImpY = -CAR.ENGINE_BRAKE * fwdVel.y * dt;
+                    this.body.applyImpulse(new nape.geom.Vec2(ebImpX, ebImpY));
+                }
+
+                // 5) Handbrake drag — gently slow the car when handbrake is held
+                if (handbrake) {
+                    const hbDrag = CAR.DRIFT_BRAKE_FACTOR * dt;
+                    const hbImpX = -fwdVel.x * hbDrag;
+                    const hbImpY = -fwdVel.y * hbDrag;
+                    this.body.applyImpulse(new nape.geom.Vec2(hbImpX, hbImpY));
+                }
+            }
+
+            updateDrive(throttle, brake, dt) {
+                const fwd = this.getForwardVec();
+                const currentSpeed = this.getForwardSpeed();
+
+                if (brake) {
+                    // Braking: impulse opposite to current velocity
+                    if (Math.abs(currentSpeed) > 5) {
+                        const brakeDir = currentSpeed > 0 ? -1 : 1;
+                        const brakeImp = CAR.BRAKE_FORCE * dt;
+                        this.body.applyImpulse(new nape.geom.Vec2(
+                            fwd.x * brakeDir * brakeImp,
+                            fwd.y * brakeDir * brakeImp,
+                        ));
+                    } else {
+                        // Nearly stopped — kill remaining velocity
+                        const vel = this.body.get_velocity();
+                        this.body.set_velocity(new nape.geom.Vec2(
+                            vel.get_x() * 0.9,
+                            vel.get_y() * 0.9,
+                        ));
+                    }
+                    return;
+                }
+
+                if (throttle === 0) return;
+
+                // Determine desired speed and check if we should accelerate
+                const desiredSpeed = throttle > 0
+                    ? CAR.MAX_FORWARD_SPEED * throttle
+                    : -CAR.MAX_REVERSE_SPEED * Math.abs(throttle);
+
+                const speedDiff = desiredSpeed - currentSpeed;
+                if ((throttle > 0 && speedDiff <= 0) || (throttle < 0 && speedDiff >= 0)) return;
+
+                // Drive impulse with progressive falloff — strong at low speed, weak near top speed
+                const maxSpd = throttle > 0 ? CAR.MAX_FORWARD_SPEED : CAR.MAX_REVERSE_SPEED;
+                const speedRatio = Math.min(Math.abs(currentSpeed) / maxSpd, 1);
+                // Quadratic falloff: full force at 0%, gentler decline toward top speed
+                const forceMult = (1 - speedRatio) * (1 - speedRatio);
+                const driveImp = CAR.MAX_DRIVE_FORCE * throttle * forceMult * dt;
+                this.body.applyImpulse(new nape.geom.Vec2(
+                    fwd.x * driveImp,
+                    fwd.y * driveImp,
+                ));
+            }
+
+            updateTurn(steer, dt, handbrake) {
+                const forwardSpeed = this.getForwardSpeed();
+                const absSpeed = Math.abs(forwardSpeed);
+
+                // Non-linear speed factor: steering is heavily suppressed at low speed
+                // Uses power curve so the car barely rotates when nearly stopped
+                const rawFactor = Math.min(1, absSpeed / CAR.STEER_LOCK_SPEED);
+                const speedFactor = Math.pow(rawFactor, CAR.STEER_LOCK_POWER);
+
+                // Reverse steering direction when going backwards
+                const direction = forwardSpeed >= 0 ? 1 : -1;
+
+                // Use stronger steering torque during drift for counter-steering
+                const torque = handbrake ? CAR.DRIFT_STEER_TORQUE : CAR.STEER_TORQUE;
+
+                // Steering as angular velocity change (torque * dt / inertia)
+                const inertia = this.body.get_inertia();
+                const angImpulse = steer * torque * speedFactor * direction * dt;
+                this.body.applyAngularImpulse(angImpulse);
+
+                // Update visual steer angle
+                this.steerAngle += (steer * 0.75 - this.steerAngle) * 0.35;
+            }
+
+            updatePhysics(throttle, steer, brake, dt, handbrake = false) {
+                this.drifting = handbrake && Math.abs(this.getForwardSpeed()) > 30;
+                this.updateFriction(dt, throttle, handbrake);
+                this.updateDrive(throttle, brake, dt);
+                this.updateTurn(steer, dt, handbrake);
+            }
+
+            updateVisual() {
+                const pr = this.world.pixelRatio;
+                const pos = this.body.get_position();
+                this.mesh.position.x = pos.get_x() / pr;
+                this.mesh.position.y = pos.get_y() / pr;
+                this.mesh.rotation.z = this.body.get_rotation();
+
+                // Rotate front wheels to show steering
+                for (const w of this.frontWheels) {
+                    w.rotation.z = this.steerAngle;
+                }
+            }
+
+            getWorldPos() {
+                const pr = this.world.pixelRatio;
+                const pos = this.body.get_position();
+                return { x: pos.get_x() / pr, y: pos.get_y() / pr };
+            }
+
+            getAngle() {
+                return this.body.get_rotation();
+            }
+
+            destroy() {
+                this.body.set_space(null);
+                this.scene.remove(this.mesh);
+                this.mesh.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
+                });
+            }
+        }
+
+        // ============================================
+        // AI CONTROLLER
+        // ============================================
+        class AIController {
+            constructor(car, waypoints, allCars, playerCar) {
+                this.car = car;
+                this.waypoints = waypoints;
+                this.allCars = allCars;       // reference to all AI cars for avoidance
+                this.playerCar = playerCar;   // reference to player car for avoidance
+                this.currentWP = 0;
+                this.stuckTimer = 0;
+                this.reverseTimer = 0;        // counts down during active reversing
+                this.reverseSteering = 0;     // stored steer direction while reversing
+            }
+
+            _normalizeAngle(a) {
+                while (a > Math.PI) a -= 2 * Math.PI;
+                while (a < -Math.PI) a += 2 * Math.PI;
+                return a;
+            }
+
+            // Compute avoidance steering and braking from nearby cars
+            // Returns { steer: number, brake: number } where brake is 0..1 urgency
+            _getAvoidance(pos, currentAngle, speed) {
+                const r = this.car.getRightVec();
+                const f = this.car.getForwardVec();
+                let avoidSteer = 0;
+                let closestAheadDist = Infinity;
+
+                const checkCar = (otherCar) => {
+                    if (otherCar === this.car) return;
+                    const op = otherCar.getWorldPos();
+                    const dx = op.x - pos.x;
+                    const dy = op.y - pos.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > AI_CONF.AVOIDANCE_RADIUS || dist < 0.01) return;
+
+                    // How far ahead is this car? (dot with forward vector)
+                    const fwdDot = dx * f.x + dy * f.y;
+                    if (fwdDot < -0.5) return; // behind us, ignore
+
+                    // Track closest car that's ahead for braking decisions
+                    if (fwdDot > 0 && dist < closestAheadDist) {
+                        closestAheadDist = dist;
+                    }
+
+                    // Which side is the other car? (dot with right vector)
+                    const sideDot = dx * r.x + dy * r.y;
+
+                    // Strength inversely proportional to distance, squared for more urgency when close
+                    const proximity = 1 - dist / AI_CONF.AVOIDANCE_RADIUS;
+                    const strength = AI_CONF.AVOIDANCE_STRENGTH * proximity * proximity;
+
+                    // Steer away from the other car (if on our right, steer left = positive)
+                    // If car is nearly dead ahead (small sideDot), steer harder to one side
+                    const sideSign = Math.abs(sideDot) < 0.3 ? (this.currentWP % 2 === 0 ? 1 : -1) : -Math.sign(sideDot);
+                    avoidSteer += sideSign * strength;
+                };
+
+                // Check player
+                checkCar(this.playerCar);
+
+                // Check other AI cars
+                for (const other of this.allCars) {
+                    checkCar(other);
+                }
+
+                // Brake urgency: if a car is very close ahead, we need to slow down
+                let brakeUrgency = 0;
+                if (closestAheadDist < AI_CONF.AVOIDANCE_RADIUS * 0.6) {
+                    brakeUrgency = 1 - closestAheadDist / (AI_CONF.AVOIDANCE_RADIUS * 0.6);
+                }
+
+                return {
+                    steer: Math.max(-1, Math.min(1, avoidSteer)),
+                    brake: brakeUrgency,
+                };
+            }
+
+            // Look ahead: returns distance to the next sharp turn (in waypoints)
+            // and the turn angle. This allows braking only when close to a corner.
+            _getLookahead() {
+                const wp = this.waypoints;
+                const len = wp.length;
+                const cur = this.currentWP;
+                const pos = this.car.getWorldPos();
+
+                // Distance to current waypoint
+                const cwp = wp[cur];
+                const distToNext = Math.sqrt((cwp.x - pos.x) ** 2 + (cwp.y - pos.y) ** 2);
+
+                // Check upcoming segments for sharp turns
+                for (let i = 0; i < AI_CONF.LOOKAHEAD_WPS + 1; i++) {
+                    const a = wp[(cur + i) % len];
+                    const b = wp[(cur + i + 1) % len];
+                    const c = wp[(cur + i + 2) % len];
+
+                    const angle1 = Math.atan2(b.y - a.y, b.x - a.x);
+                    const angle2 = Math.atan2(c.y - b.y, c.x - b.x);
+                    const turn = Math.abs(this._normalizeAngle(angle2 - angle1));
+
+                    if (turn > Math.PI * 0.3) {
+                        // Approximate distance to this turn
+                        let approxDist = distToNext;
+                        for (let j = 0; j < i; j++) {
+                            const p1 = wp[(cur + j) % len];
+                            const p2 = wp[(cur + j + 1) % len];
+                            approxDist += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                        }
+                        return { turnAngle: turn, distance: approxDist };
+                    }
+                }
+
+                return { turnAngle: 0, distance: Infinity };
+            }
+
+            update(dt) {
+                const pos = this.car.getWorldPos();
+                const currentAngle = this.car.getAngle();
+                const pr = this.car.world.pixelRatio;
+                const speed = Math.abs(this.car.getForwardSpeed()) / pr;
+                const forwardSpeed = this.car.getForwardSpeed() / pr;
+
+                // --- Advance waypoints ---
+                const target = this.waypoints[this.currentWP];
+                const dx = target.x - pos.x;
+                const dy = target.y - pos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < AI_CONF.WAYPOINT_REACH_DIST) {
+                    this.currentWP = (this.currentWP + 1) % this.waypoints.length;
+                }
+
+                // ========== REVERSING MODE ==========
+                if (this.reverseTimer > 0) {
+                    this.reverseTimer -= dt;
+                    // While reversing: go backwards and steer in the stored direction
+                    this.car.updatePhysics(-0.6, this.reverseSteering, false, dt);
+                    return;
+                }
+
+                // ========== STUCK DETECTION ==========
+                if (speed < AI_CONF.STUCK_SPEED_THRESHOLD) {
+                    this.stuckTimer += dt;
+                    if (this.stuckTimer > AI_CONF.STUCK_TIME_TO_REVERSE) {
+                        // Trigger reverse mode
+                        this.reverseTimer = AI_CONF.REVERSE_DURATION;
+                        this.stuckTimer = 0;
+
+                        // Pick a reverse steer direction: steer towards the waypoint but inverted
+                        // (since we're going backwards, we want opposite steering)
+                        const tgt = this.waypoints[this.currentWP];
+                        const tdx = tgt.x - pos.x;
+                        const tdy = tgt.y - pos.y;
+                        const desiredAngle = Math.atan2(tdy, tdx);
+                        const angleDiff = this._normalizeAngle(desiredAngle - currentAngle);
+                        // When reversing, steer opposite to where the waypoint is
+                        this.reverseSteering = angleDiff > 0 ? -1 : 1;
+
+                        this.car.updatePhysics(-0.6, this.reverseSteering, false, dt);
+                        return;
                     }
                 } else {
-                    enemy.style.top = (currentTop + gameSpeed) + 'px';
+                    this.stuckTimer = Math.max(0, this.stuckTimer - dt * 3);
                 }
 
-                // เช็คว่าชนกับรถเราไหม
-                if (isCollide(playerCar, enemy)) {
-                    endGame();
+                // ========== NORMAL DRIVING ==========
+
+                const tgt = this.waypoints[this.currentWP];
+                const tdx = tgt.x - pos.x;
+                const tdy = tgt.y - pos.y;
+
+                const desiredAngle = Math.atan2(tdy, tdx);
+                let angleDiff = this._normalizeAngle(desiredAngle - currentAngle);
+
+                // --- Steering ---
+                let steer = Math.max(-1, Math.min(1, angleDiff * AI_CONF.STEER_SENSITIVITY));
+
+                // Add avoidance steering + get braking info
+                const avoidance = this._getAvoidance(pos, currentAngle, speed);
+                steer = Math.max(-1, Math.min(1, steer + avoidance.steer));
+
+                // --- Throttle & braking ---
+                const absAngle = Math.abs(angleDiff);
+                let throttle = 0;
+                let brake = false;
+
+                if (absAngle > Math.PI * 0.65) {
+                    // Facing almost opposite direction — brake to stop, then we'll go stuck→reverse
+                    throttle = 0;
+                    brake = true;
+                } else if (absAngle > Math.PI * 0.35) {
+                    // Large turn — slow down and steer hard
+                    throttle = 0.15;
+                } else if (absAngle > 0.3) {
+                    // Moderate turn — gentle throttle
+                    throttle = 0.4;
+                } else {
+                    // Roughly straight — full speed!
+                    throttle = AI_CONF.MAX_THROTTLE;
                 }
+
+                // Slow down for upcoming sharp corners — but only when getting close
+                const lookahead = this._getLookahead();
+                if (lookahead.turnAngle > Math.PI * 0.3) {
+                    // The closer to the turn, the more we brake. Far away = keep speed.
+                    const brakeDist = 8 + speed * 0.5; // dynamic braking distance based on speed
+                    if (lookahead.distance < brakeDist) {
+                        const urgency = 1 - lookahead.distance / brakeDist;
+                        throttle = Math.min(throttle, 0.2 + (1 - urgency) * 0.6);
+                        // If very close and fast, actually brake
+                        if (urgency > 0.7 && speed > 4) {
+                            brake = true;
+                            throttle = 0;
+                        }
+                    }
+                }
+
+                // Obstacle avoidance braking — slow down or brake when car is close ahead
+                if (avoidance.brake > 0.1) {
+                    throttle = Math.min(throttle, 0.2 * (1 - avoidance.brake));
+                    if (avoidance.brake > 0.6 && speed > 1.5) {
+                        brake = true;
+                        throttle = 0;
+                    }
+                }
+
+                // --- AI Drift decision ---
+                // Drift when approaching a sharp corner at decent speed
+                let handbrake = false;
+                if (speed > AI_CONF.DRIFT_MIN_SPEED) {
+                    // Drift if currently turning hard (large angle diff to waypoint)
+                    if (absAngle > AI_CONF.DRIFT_TURN_ANGLE) {
+                        handbrake = true;
+                    }
+                    // Drift if a sharp turn is coming up soon
+                    if (lookahead.turnAngle > AI_CONF.DRIFT_TURN_ANGLE && lookahead.distance < AI_CONF.DRIFT_LOOKAHEAD_DIST) {
+                        handbrake = true;
+                    }
+                }
+
+                this.car.updatePhysics(throttle, steer, brake, dt, handbrake);
+            }
+        }
+
+        // ============================================
+        // TRACK — Real racing circuit with curves
+        // ============================================
+        class Track {
+            constructor(world, scene) {
+                this.world = world;
+                this.scene = scene;
+                this.walls = [];
+                this.meshes = [];
+
+                // Define the track centerline as control points for a Catmull-Rom spline
+                // Extended track — 2x longer with many sharp corners for drifting
+                this.controlPoints = [
+                    // Start/finish straight (bottom)
+                    { x: 0, y: -55 },
+                    { x: 18, y: -55 },
+                    { x: 35, y: -55 },
+                    // Turn 1 — sharp 90° right
+                    { x: 50, y: -52 },
+                    { x: 55, y: -42 },
+                    // Short straight up
+                    { x: 55, y: -30 },
+                    // Turn 2 — tight hairpin left
+                    { x: 52, y: -18 },
+                    { x: 40, y: -12 },
+                    // Straight angled section
+                    { x: 28, y: -10 },
+                    // Turn 3 — sharp right into esses
+                    { x: 20, y: -5 },
+                    { x: 22, y: 6 },
+                    // Turn 4 — quick left (S-bend part 1)
+                    { x: 18, y: 14 },
+                    { x: 10, y: 16 },
+                    // Turn 5 — quick right (S-bend part 2)
+                    { x: 5, y: 22 },
+                    { x: 10, y: 30 },
+                    // Long straight heading right
+                    { x: 20, y: 35 },
+                    { x: 35, y: 38 },
+                    // Turn 6 — sweeping right
+                    { x: 50, y: 36 },
+                    { x: 58, y: 28 },
+                    // Straight down
+                    { x: 60, y: 18 },
+                    { x: 60, y: 8 },
+                    // Turn 7 — tight 180° hairpin right
+                    { x: 58, y: -2 },
+                    { x: 68, y: -8 },
+                    { x: 75, y: 0 },
+                    { x: 72, y: 12 },
+                    // Straight angled back
+                    { x: 70, y: 25 },
+                    // Turn 8 — sharp left
+                    { x: 72, y: 38 },
+                    { x: 78, y: 48 },
+                    // Long straight heading up-left
+                    { x: 72, y: 58 },
+                    { x: 58, y: 62 },
+                    // Turn 9 — tight chicane
+                    { x: 45, y: 58 },
+                    { x: 38, y: 65 },
+                    { x: 28, y: 60 },
+                    // Straight heading left
+                    { x: 15, y: 55 },
+                    { x: 0, y: 52 },
+                    // Turn 10 — sharp hairpin left
+                    { x: -12, y: 55 },
+                    { x: -18, y: 45 },
+                    // Straight down-left
+                    { x: -20, y: 35 },
+                    { x: -22, y: 22 },
+                    // Turn 11 — 90° right
+                    { x: -28, y: 14 },
+                    { x: -40, y: 12 },
+                    // Straight heading left
+                    { x: -52, y: 14 },
+                    // Turn 12 — sharp left hairpin
+                    { x: -62, y: 18 },
+                    { x: -65, y: 28 },
+                    { x: -58, y: 35 },
+                    // Back straight heading right
+                    { x: -48, y: 38 },
+                    // Turn 13 — tight right
+                    { x: -40, y: 42 },
+                    { x: -38, y: 52 },
+                    // Straight heading up
+                    { x: -42, y: 62 },
+                    // Turn 14 — sweeping left
+                    { x: -50, y: 70 },
+                    { x: -62, y: 68 },
+                    // Long back straight
+                    { x: -70, y: 58 },
+                    { x: -72, y: 42 },
+                    // Turn 15 — sharp right
+                    { x: -75, y: 30 },
+                    { x: -80, y: 18 },
+                    // Straight down
+                    { x: -78, y: 5 },
+                    { x: -75, y: -8 },
+                    // Turn 16 — tight left
+                    { x: -68, y: -18 },
+                    { x: -55, y: -20 },
+                    // Straight heading right
+                    { x: -42, y: -18 },
+                    // Turn 17 — sharp right chicane
+                    { x: -32, y: -22 },
+                    { x: -28, y: -32 },
+                    { x: -35, y: -40 },
+                    // Turn 18 — left out of chicane
+                    { x: -30, y: -48 },
+                    { x: -20, y: -50 },
+                    // Final straight back to start
+                    { x: -10, y: -52 },
+                ];
+
+                // Generate smooth spline from control points
+                this.centerline = this._generateSpline(this.controlPoints, 300);
+
+                this._build();
+            }
+
+            // Catmull-Rom spline interpolation
+            _catmullRom(p0, p1, p2, p3, t) {
+                const t2 = t * t;
+                const t3 = t2 * t;
+                return {
+                    x: 0.5 * ((2 * p1.x) +
+                        (-p0.x + p2.x) * t +
+                        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+                        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+                    y: 0.5 * ((2 * p1.y) +
+                        (-p0.y + p2.y) * t +
+                        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+                        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+                };
+            }
+
+            _generateSpline(pts, totalSegments) {
+                const n = pts.length;
+                const result = [];
+                const segsPerSection = Math.ceil(totalSegments / n);
+
+                for (let i = 0; i < n; i++) {
+                    const p0 = pts[(i - 1 + n) % n];
+                    const p1 = pts[i];
+                    const p2 = pts[(i + 1) % n];
+                    const p3 = pts[(i + 2) % n];
+
+                    for (let j = 0; j < segsPerSection; j++) {
+                        const t = j / segsPerSection;
+                        result.push(this._catmullRom(p0, p1, p2, p3, t));
+                    }
+                }
+
+                return result;
+            }
+
+            // Get normal (perpendicular) at each centerline point
+            _getNormals() {
+                const cl = this.centerline;
+                const n = cl.length;
+                const normals = [];
+                for (let i = 0; i < n; i++) {
+                    const prev = cl[(i - 1 + n) % n];
+                    const next = cl[(i + 1) % n];
+                    const dx = next.x - prev.x;
+                    const dy = next.y - prev.y;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    if (len < 0.001) {
+                        normals.push({ x: 0, y: 1 });
+                    } else {
+                        // Right-hand normal
+                        normals.push({ x: -dy / len, y: dx / len });
+                    }
+                }
+                return normals;
+            }
+
+            _build() {
+                const rw = TRACK.ROAD_WIDTH;
+                const hw = rw / 2;
+                const cl = this.centerline;
+                const normals = this._getNormals();
+                const n = cl.length;
+
+                // Background grass — use PlaneGeometry to avoid Z-fighting with road
+                const grassGeo = new THREE.PlaneGeometry(500, 500);
+                const grassMtl = new THREE.MeshStandardMaterial({
+                    color: COLORS.GRASS,
+                    roughness: 1,
+                    polygonOffset: true,
+                    polygonOffsetFactor: 2,
+                    polygonOffsetUnits: 2,
+                });
+                const grass = new THREE.Mesh(grassGeo, grassMtl);
+                grass.position.z = 0;
+                grass.receiveShadow = true;
+                this.scene.add(grass);
+                this.meshes.push(grass);
+
+                // Compute inner and outer edge points
+                const outer = [];
+                const inner = [];
+                for (let i = 0; i < n; i++) {
+                    outer.push({
+                        x: cl[i].x + normals[i].x * hw,
+                        y: cl[i].y + normals[i].y * hw,
+                    });
+                    inner.push({
+                        x: cl[i].x - normals[i].x * hw,
+                        y: cl[i].y - normals[i].y * hw,
+                    });
+                }
+
+                // Build road surface as a triangle strip mesh
+                this._buildRoadSurface(inner, outer);
+
+                // Build curbs (red-white strips on outer and inner edges)
+                this._buildCurbs(inner, outer, normals);
+
+                // Lane center dashes
+                this._buildCenterDashes(cl, normals);
+
+                // Build walls along both edges
+                this._buildWallsAlongEdge(outer, normals, 1);
+                this._buildWallsAlongEdge(inner, normals, -1);
+
+                // Start/finish line
+                this._buildStartFinishLine(cl, normals);
+
+                // Grandstand decoration
+                this._buildGrandstand();
+            }
+
+            _buildRoadSurface(inner, outer) {
+                const n = inner.length;
+                const roadZ = 0.05;
+
+                // Create geometry with vertices for the road strip
+                const geo = new THREE.BufferGeometry();
+                const vertices = [];
+                const indices = [];
+                const uvs = [];
+
+                for (let i = 0; i < n; i++) {
+                    // Inner vertex
+                    vertices.push(inner[i].x, inner[i].y, roadZ);
+                    // Outer vertex
+                    vertices.push(outer[i].x, outer[i].y, roadZ);
+
+                    uvs.push(0, i / n);
+                    uvs.push(1, i / n);
+
+                    const i0 = i * 2;
+                    const i1 = i * 2 + 1;
+                    const j0 = ((i + 1) % n) * 2;
+                    const j1 = ((i + 1) % n) * 2 + 1;
+
+                    indices.push(i0, j0, i1);
+                    indices.push(i1, j0, j1);
+                }
+
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                geo.setIndex(indices);
+                geo.computeVertexNormals();
+
+                const mtl = new THREE.MeshStandardMaterial({
+                    color: COLORS.ROAD,
+                    roughness: 0.85,
+                    polygonOffset: true,
+                    polygonOffsetFactor: 1,
+                    polygonOffsetUnits: 1,
+                });
+                const mesh = new THREE.Mesh(geo, mtl);
+                mesh.receiveShadow = true;
+                this.scene.add(mesh);
+                this.meshes.push(mesh);
+            }
+
+            _buildCurbs(inner, outer, normals) {
+                const n = inner.length;
+                const cw = TRACK.CURB_WIDTH;
+                const curbZ = 0.07;
+
+                // Build each curb edge as a single continuous triangle-strip mesh
+                // with alternating red/white vertex colors — no overlapping boxes
+                this._buildCurbStrip(outer, normals, cw, curbZ, 1);
+                this._buildCurbStrip(inner, normals, cw, curbZ, -1);
+            }
+
+            _buildCurbStrip(edgePoints, normals, width, z, side) {
+                const n = edgePoints.length;
+
+                // How many centerline points per color segment
+                const colorStep = 1;
+
+                // Build non-indexed geometry so each face has flat color (no interpolation)
+                const vertices = [];
+                const colors = [];
+
+                for (let i = 0; i < n; i++) {
+                    const j = (i + 1) % n;
+                    const ep0 = edgePoints[i];
+                    const ep1 = edgePoints[j];
+                    const nm0 = normals[i];
+                    const nm1 = normals[j];
+
+                    // Four corners of this quad
+                    const ax = ep0.x, ay = ep0.y;
+                    const bx = ep0.x + nm0.x * width * side, by = ep0.y + nm0.y * width * side;
+                    const cx = ep1.x, cy = ep1.y;
+                    const dx = ep1.x + nm1.x * width * side, dy = ep1.y + nm1.y * width * side;
+
+                    // Color for this segment
+                    const segIdx = Math.floor(i / colorStep);
+                    const isRed = segIdx % 2 === 0;
+                    const r = isRed ? 0.87 : 1.0;
+                    const g = isRed ? 0.07 : 1.0;
+                    const b = isRed ? 0.07 : 1.0;
+
+                    // Two triangles per quad (both windings so it works from both sides)
+                    // Tri 1: a, c, b
+                    vertices.push(ax, ay, z, cx, cy, z, bx, by, z);
+                    // Tri 2: b, c, d
+                    vertices.push(bx, by, z, cx, cy, z, dx, dy, z);
+
+                    // 6 vertices, same color
+                    for (let v = 0; v < 6; v++) {
+                        colors.push(r, g, b);
+                    }
+                }
+
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                geo.computeVertexNormals();
+
+                const mtl = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    roughness: 0.7,
+                    side: THREE.DoubleSide,
+                });
+                const mesh = new THREE.Mesh(geo, mtl);
+                mesh.receiveShadow = true;
+                this.scene.add(mesh);
+                this.meshes.push(mesh);
+            }
+
+            _buildCenterDashes(cl, normals) {
+                const n = cl.length;
+                const dashLen = 1.8;
+                const gapLen = 2.5;
+
+                let accumulated = 0;
+                let drawing = true;
+                let dashStart = null;
+
+                for (let i = 0; i < n; i++) {
+                    const j = (i + 1) % n;
+                    const dx = cl[j].x - cl[i].x;
+                    const dy = cl[j].y - cl[i].y;
+                    const segLen = Math.sqrt(dx * dx + dy * dy);
+
+                    if (drawing && dashStart === null) {
+                        dashStart = cl[i];
+                    }
+
+                    accumulated += segLen;
+
+                    if (drawing && accumulated >= dashLen) {
+                        // End the dash
+                        const angle = Math.atan2(cl[j].y - dashStart.y, cl[j].x - dashStart.x);
+                        const len = Math.sqrt((cl[j].x - dashStart.x) ** 2 + (cl[j].y - dashStart.y) ** 2);
+                        const mx = (dashStart.x + cl[j].x) / 2;
+                        const my = (dashStart.y + cl[j].y) / 2;
+
+                        if (len > 0.1) {
+                            const geo = new THREE.BoxGeometry(len, 0.15, 0.02);
+                            const mtl = new THREE.MeshStandardMaterial({
+                                color: COLORS.LINE_WHITE,
+                                transparent: true,
+                                opacity: 0.5,
+                                roughness: 0.5,
+                            });
+                            const mesh = new THREE.Mesh(geo, mtl);
+                            mesh.position.set(mx, my, 0.06);
+                            mesh.rotation.z = angle;
+                            this.scene.add(mesh);
+                            this.meshes.push(mesh);
+                        }
+
+                        drawing = false;
+                        accumulated = 0;
+                        dashStart = null;
+                    } else if (!drawing && accumulated >= gapLen) {
+                        drawing = true;
+                        accumulated = 0;
+                        dashStart = cl[j];
+                    }
+                }
+            }
+
+            _buildWallsAlongEdge(edgePoints, normals, side) {
+                const n = edgePoints.length;
+                const wt = TRACK.WALL_THICKNESS;
+                const pr = this.world.pixelRatio;
+                const wallHeight = 0.7;
+
+                // Build walls as segments (every few points to avoid too many physics bodies)
+                const step = 2;
+                for (let i = 0; i < n; i += step) {
+                    const j = (i + step) % n;
+                    const p1 = edgePoints[i];
+                    const p2 = edgePoints[j];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    if (len < 0.01) continue;
+                    const angle = Math.atan2(dy, dx);
+                    const mx = (p1.x + p2.x) / 2 + normals[i].x * (wt / 2 + TRACK.CURB_WIDTH) * side;
+                    const my = (p1.y + p2.y) / 2 + normals[i].y * (wt / 2 + TRACK.CURB_WIDTH) * side;
+
+                    // Physics wall
+                    const body = new nape.phys.Body(nape.phys.BodyType.get_STATIC());
+                    const shape = new nape.shape.Polygon(
+                        nape.shape.Polygon.box(len * pr, wt * pr),
+                    );
+                    const mat = new nape.phys.Material(0.3, 0.5, 0.5, 2, 0);
+                    shape.set_material(mat);
+
+                    const filter = new nape.dynamics.InteractionFilter();
+                    filter.set_collisionGroup(COLLISION.WALL.group);
+                    filter.set_collisionMask(COLLISION.WALL.mask);
+                    shape.set_filter(filter);
+
+                    body.get_shapes().add(shape);
+                    body.set_position(new nape.geom.Vec2(mx * pr, my * pr));
+                    body.set_rotation(angle);
+                    body.set_space(this.world.space);
+                    this.walls.push(body);
+
+                    // Visual wall
+                    const geo = new THREE.BoxGeometry(len, wt, wallHeight);
+                    const mtl = new THREE.MeshStandardMaterial({
+                        color: COLORS.WALL,
+                        roughness: 0.6,
+                        metalness: 0.15,
+                    });
+                    const mesh = new THREE.Mesh(geo, mtl);
+                    mesh.position.set(mx, my, wallHeight / 2);
+                    mesh.rotation.z = angle;
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    this.scene.add(mesh);
+                    this.meshes.push(mesh);
+                }
+            }
+
+            _buildStartFinishLine(cl, normals) {
+                const rw = TRACK.ROAD_WIDTH;
+                // Place start/finish line at centerline index 0
+                const p = cl[0];
+                const norm = normals[0];
+                const tangentX = -norm.y;
+                const tangentY = norm.x;
+                const angle = Math.atan2(tangentY, tangentX);
+
+                // Checkered pattern
+                const numChecks = 8;
+                const checkSize = rw / numChecks;
+                for (let row = 0; row < 2; row++) {
+                    for (let col = 0; col < numChecks; col++) {
+                        const isWhite = (row + col) % 2 === 0;
+                        const geo = new THREE.BoxGeometry(checkSize, checkSize, 0.02);
+                        const mtl = new THREE.MeshStandardMaterial({
+                            color: isWhite ? 0xffffff : 0x111111,
+                            roughness: 0.5,
+                        });
+                        const mesh = new THREE.Mesh(geo, mtl);
+
+                        // Position along perpendicular to track direction
+                        const offsetAlong = (row - 0.5) * checkSize;
+                        const offsetPerp = (col - numChecks / 2 + 0.5) * checkSize;
+
+                        mesh.position.set(
+                            p.x + tangentX * offsetAlong + norm.x * offsetPerp,
+                            p.y + tangentY * offsetAlong + norm.y * offsetPerp,
+                            0.06,
+                        );
+                        mesh.rotation.z = angle;
+                        this.scene.add(mesh);
+                        this.meshes.push(mesh);
+                    }
+                }
+            }
+
+            _buildGrandstand() {
+                // Simple grandstand near start/finish
+                const p = this.centerline[0];
+                const normals = this._getNormals();
+                const norm = normals[0];
+
+                const standX = p.x + norm.x * 12;
+                const standY = p.y + norm.y * 12;
+
+                // Base
+                const baseGeo = new THREE.BoxGeometry(12, 4, 1.5);
+                const baseMtl = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+                const base = new THREE.Mesh(baseGeo, baseMtl);
+                base.position.set(standX, standY, 0.75);
+                base.rotation.z = Math.atan2(-norm.y, -norm.x) + Math.PI / 2;
+                base.castShadow = true;
+                base.receiveShadow = true;
+                this.scene.add(base);
+                this.meshes.push(base);
+
+                // Roof
+                const roofGeo = new THREE.BoxGeometry(13, 4.5, 0.2);
+                const roofMtl = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.5 });
+                const roof = new THREE.Mesh(roofGeo, roofMtl);
+                roof.position.set(standX, standY, 2.5);
+                roof.rotation.z = base.rotation.z;
+                roof.castShadow = true;
+                this.scene.add(roof);
+                this.meshes.push(roof);
+            }
+
+            // Generate waypoints for AI with optional lane offset
+            getWaypoints(laneOffset) {
+                const cl = this.centerline;
+                const normals = this._getNormals();
+                // Sample every few points to get manageable waypoint count
+                const step = 4;
+                const waypoints = [];
+                for (let i = 0; i < cl.length; i += step) {
+                    waypoints.push({
+                        x: cl[i].x + normals[i].x * laneOffset,
+                        y: cl[i].y + normals[i].y * laneOffset,
+                    });
+                }
+                return waypoints;
+            }
+
+            // Get start positions along the track (grid positions)
+            getStartPositions(count) {
+                const cl = this.centerline;
+                const normals = this._getNormals();
+                const positions = [];
+
+                for (let i = 0; i < count; i++) {
+                    const row = Math.floor(i / 2);
+                    const col = i % 2;
+                    const idx = (cl.length - 3 - row * 3 + cl.length) % cl.length;
+
+                    const laneOffset = (col === 0 ? -1 : 1) * 1.8;
+                    const p = cl[idx];
+                    const n = normals[idx];
+
+                    // Direction of track at this point
+                    const next = cl[(idx + 1) % cl.length];
+                    const angle = Math.atan2(next.y - p.y, next.x - p.x);
+
+                    positions.push({
+                        x: p.x + n.x * laneOffset,
+                        y: p.y + n.y * laneOffset,
+                        angle: angle,
+                    });
+                }
+                return positions;
+            }
+        }
+
+        // ============================================
+        // EXHAUST PARTICLE SYSTEM
+        // ============================================
+        class ExhaustSystem {
+            constructor(scene) {
+                this.scene = scene;
+                this.maxParticles = 300;
+                this.particles = [];
+
+                // Shared geometry — small sphere for each smoke puff
+                this.geo = new THREE.SphereGeometry(0.3, 6, 4);
+
+                // Pool of reusable meshes
+                this.pool = [];
+                const mtl = new THREE.MeshStandardMaterial({
+                    color: 0xaaaaaa,
+                    transparent: true,
+                    opacity: 0.6,
+                    roughness: 1,
+                    metalness: 0,
+                    depthWrite: false,
+                });
+                for (let i = 0; i < this.maxParticles; i++) {
+                    const mesh = new THREE.Mesh(this.geo, mtl.clone());
+                    mesh.visible = false;
+                    mesh.castShadow = false;
+                    mesh.receiveShadow = false;
+                    scene.add(mesh);
+                    this.pool.push(mesh);
+                }
+                this.poolIndex = 0;
+
+                // Emit accumulators per car (keyed by car reference)
+                this.emitTimers = new Map();
+            }
+
+            _getMesh() {
+                const mesh = this.pool[this.poolIndex];
+                this.poolIndex = (this.poolIndex + 1) % this.maxParticles;
+                return mesh;
+            }
+
+            emit(car, throttle) {
+                const speed = Math.abs(car.getForwardSpeed()) / car.world.pixelRatio;
+
+                // Determine emission rate based on speed and throttle
+                // More smoke when accelerating hard or at higher speeds
+                const absThrottle = Math.abs(throttle);
+                const speedFactor = Math.min(speed / 8, 1);
+                const emitRate = 0.015 + (1 - speedFactor) * absThrottle * 0.03;
+
+                if (!this.emitTimers.has(car)) {
+                    this.emitTimers.set(car, 0);
+                }
+                let timer = this.emitTimers.get(car);
+                timer -= 1 / 60;
+                this.emitTimers.set(car, timer);
+
+                // Only emit if car is moving or accelerating
+                if (speed < 0.3 && absThrottle < 0.1) return;
+
+                if (timer > 0) return;
+                this.emitTimers.set(car, emitRate);
+
+                // Spawn 1-2 particles from the rear of the car
+                const count = absThrottle > 0.5 ? 2 : 1;
+                const pos = car.getWorldPos();
+                const angle = car.getAngle();
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+
+                for (let i = 0; i < count; i++) {
+                    const mesh = this._getMesh();
+
+                    // Rear of car + small random offset
+                    const rearOffset = -CAR.LENGTH * 0.52;
+                    const sideOffset = (Math.random() - 0.5) * CAR.WIDTH * 0.4;
+                    const wx = pos.x + cosA * rearOffset - sinA * sideOffset;
+                    const wy = pos.y + sinA * rearOffset + cosA * sideOffset;
+
+                    mesh.position.set(wx, wy, 0.2 + Math.random() * 0.1);
+                    mesh.scale.setScalar(0.6 + Math.random() * 0.3);
+                    mesh.material.opacity = 0.35 + Math.random() * 0.15;
+                    mesh.material.color.setHex(
+                        Math.random() > 0.5 ? 0x999999 : 0xbbbbbb,
+                    );
+                    mesh.visible = true;
+
+                    // Velocity: drifts backward relative to car + slight random spread
+                    const driftSpeed = 0.5 + speed * 0.05;
+                    this.particles.push({
+                        mesh,
+                        vx: -cosA * driftSpeed + (Math.random() - 0.5) * 0.3,
+                        vy: -sinA * driftSpeed + (Math.random() - 0.5) * 0.3,
+                        vz: 0.15 + Math.random() * 0.1,
+                        life: 0,
+                        maxLife: 0.42 + Math.random() * 0.35,
+                        growRate: 0.8 + Math.random() * 0.5,
+                    });
+                }
+            }
+
+            update(dt) {
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.life += dt;
+
+                    if (p.life >= p.maxLife) {
+                        p.mesh.visible = false;
+                        this.particles.splice(i, 1);
+                        continue;
+                    }
+
+                    const t = p.life / p.maxLife; // 0..1 normalized lifetime
+
+                    // Move
+                    p.mesh.position.x += p.vx * dt;
+                    p.mesh.position.y += p.vy * dt;
+                    p.mesh.position.z += p.vz * dt;
+
+                    // Slow down horizontal drift
+                    p.vx *= 0.98;
+                    p.vy *= 0.98;
+
+                    // Grow
+                    const scale = p.mesh.scale.x + p.growRate * dt;
+                    p.mesh.scale.setScalar(scale);
+
+                    // Fade out
+                    p.mesh.material.opacity = (1 - t) * 0.4;
+                }
+            }
+
+            destroy() {
+                for (const mesh of this.pool) {
+                    this.scene.remove(mesh);
+                    mesh.geometry.dispose();
+                    mesh.material.dispose();
+                }
+                this.particles = [];
+                this.pool = [];
+            }
+        }
+
+        // ============================================
+        // TIRE MARK SYSTEM (drift trails)
+        // ============================================
+        class TireMarkSystem {
+            constructor(scene) {
+                this.scene = scene;
+                this.marks = []; // array of { mesh, life }
+                this.maxMarks = 400;
+                this.prevPositions = new Map();
+
+                // Shared material
+                this.markMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x111111,
+                    transparent: true,
+                    opacity: 0.5,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
+
+            update(car, isDrifting, dt) {
+                // Fade and remove old marks regardless of drift state
+                for (let i = this.marks.length - 1; i >= 0; i--) {
+                    const m = this.marks[i];
+                    m.life -= dt;
+                    if (m.life <= 0) {
+                        this.scene.remove(m.mesh);
+                        m.mesh.geometry.dispose();
+                        this.marks.splice(i, 1);
+                    } else {
+                        m.mesh.material.opacity = Math.min(0.5, m.life * 0.15);
+                    }
+                }
+
+                if (!isDrifting) {
+                    this.prevPositions.delete(car);
+                    return;
+                }
+
+                const pos = car.getWorldPos();
+                const angle = car.getAngle();
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+
+                const rearX = -CAR.LENGTH * 0.3;
+                const halfW = CAR.WIDTH * 0.52;
+
+                const wheels = [
+                    { ox: rearX, oy: halfW },
+                    { ox: rearX, oy: -halfW },
+                ];
+
+                const current = wheels.map(w => ({
+                    x: pos.x + cosA * w.ox - sinA * w.oy,
+                    y: pos.y + sinA * w.ox + cosA * w.oy,
+                }));
+
+                const prev = this.prevPositions.get(car);
+
+                if (prev) {
+                    for (let i = 0; i < 2; i++) {
+                        const p0 = prev[i];
+                        const p1 = current[i];
+
+                        const dx = p1.x - p0.x;
+                        const dy = p1.y - p0.y;
+                        const len = Math.sqrt(dx * dx + dy * dy);
+                        if (len < 0.03) continue;
+
+                        // Create a thin plane quad between previous and current position
+                        const mx = (p0.x + p1.x) / 2;
+                        const my = (p0.y + p1.y) / 2;
+                        const markAngle = Math.atan2(dy, dx);
+
+                        const geo = new THREE.PlaneGeometry(len, 0.16);
+                        const mtl = this.markMaterial.clone();
+                        const mesh = new THREE.Mesh(geo, mtl);
+                        mesh.position.set(mx, my, 0.052);
+                        mesh.rotation.z = markAngle;
+                        mesh.receiveShadow = false;
+                        mesh.castShadow = false;
+                        this.scene.add(mesh);
+
+                        this.marks.push({ mesh, life: 5.0 });
+
+                        // Cap total marks
+                        if (this.marks.length > this.maxMarks) {
+                            const old = this.marks.shift();
+                            this.scene.remove(old.mesh);
+                            old.mesh.geometry.dispose();
+                        }
+                    }
+                }
+
+                this.prevPositions.set(car, current);
+            }
+
+            destroy() {
+                for (const m of this.marks) {
+                    this.scene.remove(m.mesh);
+                    m.mesh.geometry.dispose();
+                    m.mesh.material.dispose();
+                }
+                this.marks = [];
+            }
+        }
+
+        // ============================================
+        // GAME APP
+        // ============================================
+        class GameApp {
+            constructor() {
+                this.world = new NapeWorld();
+                this.three = new ThreeRenderer("threeCanvas");
+                this.input = new InputManager();
+                this.track = new Track(this.world, this.three.scene);
+
+                // Get grid start positions from track
+                const startPositions = this.track.getStartPositions(AI_CONF.COUNT + 1);
+
+                // Player car — last position
+                const playerStart = startPositions[startPositions.length - 1];
+                this.playerCar = new Car(
+                    this.world,
+                    this.three.scene,
+                    playerStart.x,
+                    playerStart.y,
+                    playerStart.angle,
+                    COLORS.PLAYER,
+                );
+
+                // AI cars
+                this.aiCars = [];
+                this.aiControllers = [];
+                this._createAICars(startPositions);
+
+                // Exhaust particle system
+                this.exhaust = new ExhaustSystem(this.three.scene);
+
+                // Tire mark system (drift trails)
+                this.tireMarks = new TireMarkSystem(this.three.scene);
+
+                // Init camera position
+                const pp = this.playerCar.getWorldPos();
+                this.three.followX = pp.x;
+                this.three.followY = pp.y;
+
+                this.speedDisplay = document.getElementById("speedDisplay");
+                this.cameraDisplay = document.getElementById("cameraMode");
+
+                this.gameLoop = new GameLoop();
+                this.gameLoop.start(
+                    (dt) => this.update(dt),
+                    () => this.render(),
+                );
+            }
+
+            _createAICars(startPositions) {
+                for (let i = 0; i < AI_CONF.COUNT; i++) {
+                    const sp = startPositions[i];
+                    const color = COLORS.AI[i % COLORS.AI.length];
+                    const car = new Car(
+                        this.world,
+                        this.three.scene,
+                        sp.x,
+                        sp.y,
+                        sp.angle,
+                        color,
+                    );
+
+                    // Lane offset: alternate between inner and outer lane
+                    const laneOffset = (i % 2 === 0 ? 1 : -1) * 1.5;
+                    const wp = this.track.getWaypoints(laneOffset);
+
+                    // Find nearest waypoint
+                    let nearIdx = 0;
+                    let nearDist = Infinity;
+                    for (let j = 0; j < wp.length; j++) {
+                        const d = Math.hypot(wp[j].x - sp.x, wp[j].y - sp.y);
+                        if (d < nearDist) {
+                            nearDist = d;
+                            nearIdx = j;
+                        }
+                    }
+
+                    this.aiCars.push(car);
+                    const ai = new AIController(car, wp, this.aiCars, this.playerCar);
+                    ai.currentWP = (nearIdx + 1) % wp.length;
+                    this.aiControllers.push(ai);
+                }
+            }
+
+            update(dt) {
+                // Player input
+                const input = this.input.getCarInput();
+                this.playerCar.updatePhysics(input.throttle, input.steer, input.brake, dt, input.handbrake);
+
+                // AI
+                for (const ai of this.aiControllers) {
+                    ai.update(dt);
+                }
+
+                // Physics
+                this.world.step(dt);
+
+                // Visuals
+                this.playerCar.updateVisual();
+                for (const car of this.aiCars) {
+                    car.updateVisual();
+                }
+
+                // Exhaust particles
+                this.exhaust.emit(this.playerCar, input.throttle);
+                for (const ai of this.aiControllers) {
+                    // AI throttle approximation based on forward speed change
+                    const aiSpeed = Math.abs(ai.car.getForwardSpeed()) / this.world.pixelRatio;
+                    this.exhaust.emit(ai.car, aiSpeed > 0.5 ? 0.7 : 0);
+                }
+                this.exhaust.update(dt);
+
+                // Tire marks (drift trails)
+                this.tireMarks.update(this.playerCar, this.playerCar.drifting, dt);
+                for (const car of this.aiCars) {
+                    this.tireMarks.update(car, car.drifting, dt);
+                }
+
+                // Camera
+                const pp = this.playerCar.getWorldPos();
+                const carAngle = this.playerCar.getAngle();
+                this.three.updateCamera(pp.x, pp.y, carAngle, this.input.cameraMode);
+
+                // HUD
+                const pr = this.world.pixelRatio;
+                const speed = Math.abs(this.playerCar.getForwardSpeed()) / pr;
+                this.speedDisplay.textContent = `${Math.round(speed * 3.6)} km/h`;
+                this.cameraDisplay.textContent = this.input.cameraMode === "topdown" ? "TOP-DOWN" : "TPS";
+
+            }
+
+            render() {
+                this.three.render();
+            }
+        }
+
+        // ============================================
+        // START
+        // ============================================
+        initLibraries()
+            .then(() => {
+                new GameApp();
+            })
+            .catch((err) => {
+                console.error(err);
+                document.getElementById("speedDisplay").textContent =
+                    "Error loading libraries";
             });
-
-            gameLoopId = requestAnimationFrame(gameLoop);
-        }
-
-        // จบเกม
-        function endGame() {
-            isGameOver = true;
-            clearTimeout(enemySpawnId);
-            cancelAnimationFrame(gameLoopId);
-            gameOverScreen.style.display = 'flex';
-            finalScoreElement.innerText = score;
-        }
-
-        // เริ่มเกมใหม่
-        function restartGame() {
-            isGameOver = false;
-            score = 0;
-            gameSpeed = 5;
-            playerX = 130;
-            
-            scoreElement.innerText = score;
-            playerCar.style.left = playerX + 'px';
-            gameOverScreen.style.display = 'none';
-
-            // ลบรถศัตรูที่ค้างอยู่
-            enemies.forEach(enemy => enemy.remove());
-            enemies = [];
-
-            // เริ่มระบบใหม่
-            spawnEnemy();
-            gameLoop();
-        }
-
-        // เริ่มเกมครั้งแรก
-        restartGame();
     </script>
 </body>
+
 </html>

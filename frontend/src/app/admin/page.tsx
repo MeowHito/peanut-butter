@@ -87,7 +87,7 @@ function EditModal({
     const [description, setDescription] = useState(game.description || "");
     const [thumbnail, setThumbnail] = useState<File | null>(null);
     const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(
-        game.thumbnailUrl ? `${API_BASE}${game.thumbnailUrl}` : null
+        game.thumbnailUrl ? (game.thumbnailUrl.startsWith('http') ? game.thumbnailUrl : `${API_BASE}${game.thumbnailUrl}`) : null
     );
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -601,7 +601,7 @@ export default function AdminDashboardPage() {
                                             <div className="flex items-center gap-2">
                                                 {game.thumbnailUrl ? (
                                                     <img
-                                                        src={`${API_BASE}${game.thumbnailUrl}`}
+                                                        src={game.thumbnailUrl.startsWith('http') ? game.thumbnailUrl : `${API_BASE}${game.thumbnailUrl}`}
                                                         alt=""
                                                         className="h-8 w-8 border border-border object-cover"
                                                     />

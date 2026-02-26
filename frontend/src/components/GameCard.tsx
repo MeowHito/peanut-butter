@@ -25,7 +25,7 @@ export default function GameCard({ game }: { game: Game }) {
             <div className="relative flex h-40 items-center justify-center bg-muted">
                 {game.thumbnailUrl ? (
                     <img
-                        src={`${API_BASE}${game.thumbnailUrl}`}
+                        src={game.thumbnailUrl.startsWith('http') ? game.thumbnailUrl : `${API_BASE}${game.thumbnailUrl}`}
                         alt={game.title}
                         className="h-full w-full object-cover"
                     />

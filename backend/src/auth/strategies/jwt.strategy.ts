@@ -14,6 +14,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+            // ดึง token จาก Header: "Authorization: Bearer ..."
             ignoreExpiration: false,
             secretOrKey: configService.get<string>('JWT_SECRET', 'peanut-butter-secret-key'),
         });

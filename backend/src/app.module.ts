@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -13,8 +11,8 @@ import { CategoriesModule } from './categories/categories.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+      isGlobal: true, 
+    }), //อ่านenv ได้ทั้งแอป
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -22,12 +20,8 @@ import { CategoriesModule } from './categories/categories.module';
           'MONGODB_URI',
           'mongodb://localhost:27017/peanut-butter',
         ),
-      }),
+      }), //เชื่อมต่อ mongoDB
       inject: [ConfigService],
-    }),
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/uploads',
     }),
     AuthModule,
     GamesModule,

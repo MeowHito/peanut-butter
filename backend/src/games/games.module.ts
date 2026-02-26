@@ -5,12 +5,14 @@ import { GamesService } from './games.service';
 import { Game, GameSchema } from './schemas/game.schema';
 import { AuthModule } from '../auth/auth.module';
 import { CategoriesModule } from '../categories/categories.module';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: Game.name, schema: GameSchema }]),
         AuthModule,
         CategoriesModule,
+        CloudinaryModule,
     ],
     controllers: [GamesController],
     providers: [GamesService],

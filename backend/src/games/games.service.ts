@@ -13,23 +13,21 @@ import { Game, GameDocument } from './schemas/game.schema';
 import { UploadGameDto } from './dto/upload-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { CategoriesService } from '../categories/categories.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @Injectable()
 export class GamesService {
-    private readonly uploadsDir = path.join(process.cwd(), 'uploads', 'games');
-    private readonly thumbnailsDir = path.join(process.cwd(), 'uploads', 'thumbnails');
+    private readonly tempDir = path.join(process.cwd(), 'uploads', 'temp');
     private readonly maxFileSize = 50 * 1024 * 1024; // 50MB
 
     constructor(
         @InjectModel(Game.name) private gameModel: Model<GameDocument>,
         private readonly categoriesService: CategoriesService,
+        private readonly cloudinaryService: CloudinaryService,
     ) {
-        // Ensure uploads directories exist
-        if (!fs.existsSync(this.uploadsDir)) {
-            fs.mkdirSync(this.uploadsDir, { recursive: true });
-        }
-        if (!fs.existsSync(this.thumbnailsDir)) {
-            fs.mkdirSync(this.thumbnailsDir, { recursive: true });
+        // Ensure temp directory exists
+        if (!fs.existsSync(this.tempDir)) {
+            fs.mkdirSync(this.tempDir, { recursive: true });
         }
     }
 
@@ -52,7 +50,6 @@ export class GamesService {
         // Validate file type
         const ext = path.extname(file.originalname).toLowerCase();
         if (ext !== '.html' && ext !== '.zip') {
-            // Clean up the uploaded temp file
             if (fs.existsSync(file.path)) {
                 fs.unlinkSync(file.path);
             }
@@ -71,61 +68,60 @@ export class GamesService {
             throw new BadRequestException('A game with this title already exists');
         }
 
-        // Create game directory
-        const gameDir = path.join(this.uploadsDir, slug);
-        if (!fs.existsSync(gameDir)) {
-            fs.mkdirSync(gameDir, { recursive: true });
-        }
-
+        let gamePlayUrl: string;
         let entryFile: string;
+        let cloudinaryPublicIds: string[] = [];
         const fileType = ext === '.zip' ? 'zip' : 'html';
 
         try {
             if (fileType === 'zip') {
-                // Extract ZIP file
+                // Extract ZIP to a temp directory
+                const gameDir = path.join(this.tempDir, slug);
+                if (!fs.existsSync(gameDir)) {
+                    fs.mkdirSync(gameDir, { recursive: true });
+                }
+
                 const zip = new AdmZip(file.path);
                 zip.extractAllTo(gameDir, true);
 
                 // Find entry file (index.html)
                 const foundEntry = this.findEntryFile(gameDir);
                 if (!foundEntry) {
-                    // Clean up
                     fs.rmSync(gameDir, { recursive: true, force: true });
                     throw new BadRequestException('ZIP must contain an index.html file');
                 }
                 entryFile = foundEntry;
 
-                // Remove temp uploaded file
+                // Upload all files to Cloudinary
+                const result = await this.cloudinaryService.uploadGameFolder(gameDir, slug, entryFile);
+                gamePlayUrl = result.entryUrl;
+                cloudinaryPublicIds = result.publicIds;
+
+                // Clean up temp zip
                 if (fs.existsSync(file.path)) {
                     fs.unlinkSync(file.path);
                 }
             } else {
-                // Move HTML file to game directory
-                const destPath = path.join(gameDir, 'index.html');
-                fs.copyFileSync(file.path, destPath);
-                fs.unlinkSync(file.path);
+                // Single HTML file → upload to Cloudinary
+                const result = await this.cloudinaryService.uploadHtmlFile(file.path, slug);
+                gamePlayUrl = result.url;
+                cloudinaryPublicIds = [result.publicId];
                 entryFile = 'index.html';
             }
         } catch (error) {
-            // Clean up on error
-            if (fs.existsSync(gameDir)) {
-                fs.rmSync(gameDir, { recursive: true, force: true });
-            }
             if (error instanceof BadRequestException) {
                 throw error;
             }
-            throw new BadRequestException('Failed to process uploaded file');
+            throw new BadRequestException('Failed to process uploaded file: ' + error.message);
         }
 
-        // Handle thumbnail
+        // Handle thumbnail → upload to Cloudinary
         let thumbnailUrl = '';
+        let thumbnailPublicId = '';
         if (thumbnailFile) {
-            const thumbExt = path.extname(thumbnailFile.originalname).toLowerCase();
-            const thumbFilename = `${slug}${thumbExt}`;
-            const thumbDest = path.join(this.thumbnailsDir, thumbFilename);
-            fs.copyFileSync(thumbnailFile.path, thumbDest);
-            fs.unlinkSync(thumbnailFile.path);
-            thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
+            const thumbResult = await this.cloudinaryService.uploadThumbnail(thumbnailFile.path, slug);
+            thumbnailUrl = thumbResult.url;
+            thumbnailPublicId = thumbResult.publicId;
         }
 
         // Create game record in database
@@ -136,12 +132,14 @@ export class GamesService {
             slug,
             genre: uploadGameDto.genre,
             uploadedBy: new Types.ObjectId(userId),
-            filePath: gameDir,
+            filePath: gamePlayUrl,  // Now stores Cloudinary URL
             entryFile,
             fileType,
             fileSize: file.size,
-            thumbnailUrl,
-            isVisible: false, // Needs admin approval
+            thumbnailUrl,           // Now stores full Cloudinary URL
+            thumbnailPublicId,
+            cloudinaryPublicIds,
+            isVisible: false,
         });
 
         return {
@@ -198,7 +196,7 @@ export class GamesService {
                 .sort(sortOption)
                 .skip(skip)
                 .limit(limit)
-                .select('-filePath -entryFile'),
+                .select('-filePath -entryFile -cloudinaryPublicIds -thumbnailPublicId'),
             this.gameModel.countDocuments(query),
         ]);
 
@@ -226,7 +224,7 @@ export class GamesService {
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
-                .select('-filePath -entryFile'),
+                .select('-filePath -entryFile -cloudinaryPublicIds -thumbnailPublicId'),
             this.gameModel.countDocuments(),
         ]);
 
@@ -279,18 +277,14 @@ export class GamesService {
         };
     }
 
-    async getGamePlayPath(id: string): Promise<string> {
+    async getGamePlayUrl(id: string): Promise<string> {
         const game = await this.gameModel.findById(id);
         if (!game) {
             throw new NotFoundException('Game not found');
         }
 
-        const entryPath = path.join(game.filePath, game.entryFile);
-        if (!fs.existsSync(entryPath)) {
-            throw new NotFoundException('Game files not found');
-        }
-
-        return entryPath;
+        // filePath now stores the Cloudinary URL
+        return game.filePath;
     }
 
     async updateGame(
@@ -323,22 +317,19 @@ export class GamesService {
         }
 
 
-        // Handle thumbnail update
+        // Handle thumbnail update via Cloudinary
         if (thumbnailFile) {
-            // Remove old thumbnail if exists
-            if (game.thumbnailUrl) {
-                const oldPath = path.join(process.cwd(), game.thumbnailUrl);
-                if (fs.existsSync(oldPath)) {
-                    fs.unlinkSync(oldPath);
-                }
+            // Delete old thumbnail from Cloudinary
+            if (game.thumbnailPublicId) {
+                await this.cloudinaryService.deleteByPublicId(game.thumbnailPublicId, 'image');
             }
 
-            const thumbExt = path.extname(thumbnailFile.originalname).toLowerCase();
-            const thumbFilename = `${game.slug}${thumbExt}`;
-            const thumbDest = path.join(this.thumbnailsDir, thumbFilename);
-            fs.copyFileSync(thumbnailFile.path, thumbDest);
-            fs.unlinkSync(thumbnailFile.path);
-            game.thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
+            const thumbResult = await this.cloudinaryService.uploadThumbnail(
+                thumbnailFile.path,
+                game.slug,
+            );
+            game.thumbnailUrl = thumbResult.url;
+            game.thumbnailPublicId = thumbResult.publicId;
         }
 
         await game.save();
@@ -388,7 +379,7 @@ export class GamesService {
             .find({ isVisible: true, isFeatured: true })
             .sort({ createdAt: -1 })
             .limit(10)
-            .select('-filePath -entryFile');
+            .select('-filePath -entryFile -cloudinaryPublicIds -thumbnailPublicId');
     }
 
     async deleteGame(id: string, userId: string, role: string) {
@@ -404,17 +395,16 @@ export class GamesService {
             throw new ForbiddenException('You can only delete your own games');
         }
 
-        // Delete game files
-        if (fs.existsSync(game.filePath)) {
-            fs.rmSync(game.filePath, { recursive: true, force: true });
+        // Delete game files from Cloudinary
+        if (game.cloudinaryPublicIds && game.cloudinaryPublicIds.length > 0) {
+            await this.cloudinaryService.deleteMultiple(game.cloudinaryPublicIds, 'raw');
         }
+        // Also try to delete the game folder
+        await this.cloudinaryService.deleteFolder(`peanut-butter/games/${game.slug}`);
 
-        // Delete thumbnail
-        if (game.thumbnailUrl) {
-            const thumbPath = path.join(process.cwd(), game.thumbnailUrl);
-            if (fs.existsSync(thumbPath)) {
-                fs.unlinkSync(thumbPath);
-            }
+        // Delete thumbnail from Cloudinary
+        if (game.thumbnailPublicId) {
+            await this.cloudinaryService.deleteByPublicId(game.thumbnailPublicId, 'image');
         }
 
         // Delete from database
@@ -493,6 +483,5 @@ export class GamesService {
             totalSize: sizeAgg[0]?.totalSize || 0,
         };
     }
-
 
 }

@@ -124,8 +124,18 @@ export class GamesController {
     @Get(':id/play')
     async playGame(@Param('id') id: string, @Res() res: Response) {
         await this.gamesService.incrementPlayCount(id);
-        const filePath = await this.gamesService.getGamePlayPath(id);
-        return res.sendFile(filePath);
+        const playUrl = await this.gamesService.getGamePlayUrl(id);
+
+        // Cloudinary raw uploads don't serve with text/html content-type,
+        // so we proxy the content and serve it with the correct headers
+        try {
+            const response = await fetch(playUrl);
+            const html = await response.text();
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(html);
+        } catch {
+            return res.redirect(playUrl);
+        }
     }
 
     // ================= UPDATE (ADMIN) =================

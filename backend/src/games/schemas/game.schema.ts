@@ -38,6 +38,12 @@ export class Game {
     @Prop({ default: '' })
     thumbnailUrl: string;
 
+    @Prop({ default: '' })
+    thumbnailPublicId: string;
+
+    @Prop({ type: [String], default: [] })
+    cloudinaryPublicIds: string[];
+
     @Prop({ default: false })
     isVisible: boolean;
 
